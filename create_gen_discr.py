@@ -122,9 +122,13 @@ class Generator(nn.Module):
         return nn.Sequential(*decoder)
     
 
-    def forward(self, x):
+    def forward(self, x, encode_only=False):
         # first apply encoder
         enc_x = self.encoder(x)
+
+        # return only encoder results for patchNCELoss
+        if encode_only:
+            return enc_x
         # second apply decoder
         dec_x = self.decoder(enc_x)
         return dec_x
