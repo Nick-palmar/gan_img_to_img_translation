@@ -56,8 +56,26 @@ def create_dataloader(root: str, im_size: Tuple, bs: int) -> DataLoader:
     dataloader = DataLoader(dataset, batch_size=bs, shuffle=True)
     return dataloader
 
+def save_images(img_tensors: torch.Tensor, file_name: str, folder: str='output'):
+    fig, axs = plt.subplots(img_tensors.shape[0], figsize=(10, 5))
+    img_idx = 0
 
-def show_batch(data: Data, n: int, folder='output') -> matplotlib.image.AxesImage:
+    if img_tensors.shape[0] == 1:
+        axs.imshow(img_tensors[img_idx].permute(1, 2, 0).detach())
+        axs.set_xticks([])
+        axs.set_yticks([])
+    else:
+        for ax in axs:
+            # plt.axis('off')
+            ax.imshow(img_tensors[img_idx].permute(1, 2, 0).detach())
+            ax.set_xticks([])
+            ax.set_yticks([])
+            img_idx += 1
+    
+    # save the figure results
+    plt.savefig(os.path.join(folder, file_name))
+
+def show_batch(data: Data, n: int, folder: str='output') -> matplotlib.image.AxesImage:
     if n <= 0:
         raise ValueError(f"Expected the number of samples to be >= 1 but got {n} instead")
     elif n > data.bs:

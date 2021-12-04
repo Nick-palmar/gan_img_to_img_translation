@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 
-def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='instance', transpose=False):
+def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='batch', transpose=False,):
         # do not reduce size due to ks mismatch
         padding = ks//2
         if not transpose:
@@ -17,8 +17,8 @@ def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='i
         else:
             raise Exception(f'Norm should be either "instance" or "batch" but {norm} was passed')
 
-        if gammaZero:
-            # init batch norm gamma param to zero to speed up training
+        if gammaZero and norm_layer=='batch':
+            # init batch norm gamma param to zero to speed up training 
             nn.init.zeros_(norm_layer.weight.data)
 
         layers.append(norm_layer)
@@ -67,6 +67,7 @@ class Generator(nn.Module):
             n_downsamples: Number of downsamples to apply in the network stem
         """
         # network attributes
+        super().__init__()
         self.n_downsamples = n_downsamples
         self.n_blocks = n_blocks
         self.in_ch = in_ch
@@ -77,7 +78,7 @@ class Generator(nn.Module):
         # below should be: [in_ch, base_ch//2, base_ch//2, base_ch, base_ch*2, base_ch*4]
         stem_sizes = self._create_stem_sizes()
         print(stem_sizes)
-        self.stem = self._create_stem(stem_sizes, n_downsamples)
+        self.stem = self._create_stem(stem_sizes)
 
         # Add residual layers for resnet encoder
         self.res_layers = self._create_res_layers()
@@ -108,14 +109,15 @@ class Generator(nn.Module):
     def _create_res_layers(self):
         # create multiplication factor
         mult = 2**self.n_downsamples
-        layers = [ResBlock(self.base_ch*mult, self.base_ch*mult) for i in range(self.nblocks)]
+        layers = [ResBlock(self.base_ch*mult, self.base_ch*mult) for i in range(self.n_blocks)]
         return nn.Sequential(*layers)
     
     def _create_decoder(self, sizes):
+        # print(sizes)
         lt_downsamples = lambda i: i < self.n_downsamples
         # create the decoder with transposed convolutions and a final Tanh layer
         decoder = [
-            *[_single_conv(sizes[i], sizes[i+1], 3, stride = 2 if lt_downsamples(i) else 1, transpose = True if lt_downsamples(i) else False)
+            *[_single_conv(sizes[i], sizes[i+1], 3 if lt_downsamples(i) else 4, stride = 2 if lt_downsamples(i) else 1, transpose = True if lt_downsamples(i) else False)
             for i in range(len(sizes)-1)],
             nn.Tanh()
         ]
@@ -125,6 +127,7 @@ class Generator(nn.Module):
     def forward(self, x, encode_only=False):
         # first apply encoder
         enc_x = self.encoder(x)
+        # print(enc_x.shape)
 
         # return only encoder results for patchNCELoss
         if encode_only:
