@@ -128,12 +128,28 @@ class Generator(nn.Module):
         # first apply encoder
         enc_x = self.encoder(x)
         # print(enc_x.shape)
-
         # return only encoder results for patchNCELoss
         if encode_only:
             return enc_x
+        
         # second apply decoder
         dec_x = self.decoder(enc_x)
         return dec_x
+
+
+class Disciminator(nn.Module):
+    """
+    Create a discriminator model to tell the difference between real and fake images
+    """
+    def __init__(self, ch_in, ):
+        pass
+        # start with a 1x1 conv
+
+        # calculate the number of res blocks to add
+
+        # output a single channel feature map of activations from the discriminator (from the Patch GAN paper)
+
+
+# TODO: Define the discriminator loss (define and test vanilla, LSGAN, and non-saturating)
 
 
