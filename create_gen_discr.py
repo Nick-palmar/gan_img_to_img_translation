@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 
-def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='batch', transpose=False,):
+def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='batch', transpose=False, leaky=False):
         # do not reduce size due to ks mismatch
         padding = ks//2
         if not transpose:
@@ -23,28 +23,33 @@ def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='b
 
         layers.append(norm_layer)
         # check if this layer should have an activation - yes unless the final layer
-        if act:
+        if act and not leaky:
             layers.append(nn.ReLU())
+        elif act and leaky:
+            layers.append(nn.LeakyReLU(0.2))
         
         layers = nn.Sequential(*layers)
         return layers
 
 class ResBlock(nn.Module):
-    def __init__(self, ch_in, ch_out, stride=1):
+    def __init__(self, ch_in, ch_out, stride=1, leaky=False):
         super().__init__()
-        self.conv = self._resblock_conv(ch_in, ch_out, stride=stride)
+        self.conv = self._resblock_conv(ch_in, ch_out, leaky, stride=stride)
         self.pool = self._return if stride==1 else nn.AvgPool2d(stride, ceil_mode=True)
         self.id_conv = self._return if ch_in == ch_out else _single_conv(ch_in, ch_out, 1, stride=1, act=False)
-        self.relu = nn.ReLU()
+        if leaky:
+            self.relu = nn.LeakyReLU(0.2)
+        else:
+            self.relu = nn.ReLU()
     
     def _return(self, x):
         return x
 
-    def _resblock_conv(self, ch_in, ch_out, stride=1, ks=3):
+    def _resblock_conv(self, ch_in, ch_out, leaky, stride=1, ks=3):
         # create the convolutional path of the resnet block following the bottleneck apporach
         conv_block = nn.Sequential(
-            _single_conv(ch_in, ch_out//4, 1),
-            _single_conv(ch_out//4, ch_out//4, ks, stride=stride), 
+            _single_conv(ch_in, ch_out//4, 1, leaky=leaky),
+            _single_conv(ch_out//4, ch_out//4, ks, stride=stride, leaky=leaky), 
             _single_conv(ch_out//4, ch_out, 1, act=False, gammaZero=True)
         )
         return conv_block
@@ -141,13 +146,37 @@ class Disciminator(nn.Module):
     """
     Create a discriminator model to tell the difference between real and fake images
     """
-    def __init__(self, ch_in, ):
-        pass
-        # start with a 1x1 conv
+    def __init__(self, ch_in, base_ch=64, n_layers=3):
+        super().__init__()
+        self.ch_in = ch_in
+        self.base_ch = base_ch
+        self.n_layers = n_layers
+        self.convs = self._create_conv_discriminator()
+    
+    def _create_conv_discriminator(self):
+        # start with a 1x1 conv assuming  a 128*128 input image; convert to base_ch channels
+        convs = [_single_conv(self.ch_in, self.base_ch, 1, stride=2, leaky=True)]
 
-        # calculate the number of res blocks to add
-
+        # add multiple res blocks to reduce the 128*128 input
+        ch_mult_prev = 1
+        ch_mult = 1
+        # first layer was alreday applied above; apply all others
+        for i in range(1, self.n_layers):
+            ch_mult_prev = ch_mult
+            # set the multiplier to a max of 8 or 2**current layer
+            ch_mult = min(2**i, 8)
+            convs += [
+                ResBlock(self.base_ch * ch_mult_prev, self.base_ch * ch_mult, stride=2, leaky=True)
+            ]
+        
         # output a single channel feature map of activations from the discriminator (from the Patch GAN paper)
+        convs += [_single_conv(self.base_ch * ch_mult, 1, 3, leaky=True)]
+        return nn.Sequential(*convs)
+    
+    def forward(self, x):
+        # apply the convolutional discriminator
+        out = self.convs(x)
+        return out
 
 
 # TODO: Define the discriminator loss (define and test vanilla, LSGAN, and non-saturating)
