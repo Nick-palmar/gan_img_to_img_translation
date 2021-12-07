@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import torch.nn.functional as F
 
 def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='batch', transpose=False, leaky=False):
         # do not reduce size due to ks mismatch
@@ -212,5 +213,13 @@ class DGANLoss(nn.Module):
             loss = self.loss(x, targ_tens)
         # non-saturating loss is being used
         else:
-            # TODO: research non-saturating loss with softplus updated by ian goodfellow
+            if is_real:
+                # minimize the loss by passing softplus(-x) = ln(1+e**-x) as x -> +inf (real prediction get predicted more real) => e**-x -> 0 => softplus(-x) -> 0+
+                loss = F.softplus(-x)
+            else:
+                # minimize the loss by passing softplus(x) = ln(1+e**x) as x -> -inf (fake prediction get predicted more fake) => e**x -> 0 => softplus(x) -> 0+
+                loss = F.softplus(x)
 
+            # since the discriminator is giving a grid of activations, group the loss by batch and take the mean along the activation dimension
+            loss = loss.view(x.shape[0], -1).mean(1)
+        return loss
