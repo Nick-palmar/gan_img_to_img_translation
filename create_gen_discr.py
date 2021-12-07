@@ -144,7 +144,7 @@ class Generator(nn.Module):
 
 class Disciminator(nn.Module):
     """
-    Create a discriminator model to tell the difference between real and fake images
+    Create a discriminator model to tell the difference between real and fake images (assumes 128*128 input images)
     """
     def __init__(self, ch_in, base_ch=64, n_layers=3):
         super().__init__()
@@ -179,6 +179,38 @@ class Disciminator(nn.Module):
         return out
 
 
-# TODO: Define the discriminator loss (define and test vanilla, LSGAN, and non-saturating)
+class DGANLoss(nn.Module):
+    """
+    Defines the GAN loss function for the discriminator's predictions of real or fake on data
+    """
+    def __init__(self, mode):
+        self.mode = mode
 
+        # define the loss to be used when receiving a grid of activaitons (predictions) for an image
+        if self.mode == 'lsgan':
+            self.loss = nn.MSELoss()
+        elif self.mode == 'vanilla':
+            self.loss = nn.BCEWithLogitsLoss()
+        elif self.mode == 'non-saturating':
+            self.loss = None
+        else:
+            raise NotImplementedError(f"The mode {mode} for DGANLoss is not implemented")
+    
+    def create_targ_tensor(inp, is_real):
+        if is_real:
+            targ_tensor = torch.Tensor([1])
+        else:
+            targ_tensor = torch.Tensor([0])
+        # returns the target tensor in the same shape as the input (since it will be a grid of activations from the discriminator)
+        return targ_tensor.expand_as(inp)
+        
+    
+    def forward(self, x, is_real):
+        if self.mode in ['lsgan', 'vanilla']:
+            # create an equal shaped target tensor and compute the loss
+            targ_tens = self.create_targ_tensor(x, is_real)
+            loss = self.loss(x, targ_tens)
+        # non-saturating loss is being used
+        else:
+            # TODO: research non-saturating loss with softplus updated by ian goodfellow
 
