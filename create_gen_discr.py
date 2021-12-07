@@ -223,3 +223,46 @@ class DGANLoss(nn.Module):
             # since the discriminator is giving a grid of activations, group the loss by batch and take the mean along the activation dimension
             loss = loss.view(x.shape[0], -1).mean(1)
         return loss
+
+class Normalize(nn.Module):
+    """
+    Normalization layer taken from https://github.com/taesungp/contrastive-unpaired-translation/blob/57430e99df041515c57a7ffd18bb7cbc3c1af0a9/models/networks.py#L449
+
+    The CUT GAN paper states "We normalize vectors onto a unit sphere to prevent the space from collapsing or expanding"
+    This layer is used to normalize vectors onto a unit sphere by using l2 norm
+    """
+    def __init__(self, power=2):
+        super(Normalize, self).__init__()
+        self.power = power
+
+    def forward(self, x):
+        # compute the l2 vector norm
+        norm = x.pow(self.power).sum(1, keepdim=True).pow(1. / self.power)
+        # scale the input x by the norm
+        out = x.div(norm + 1e-7)
+        return out
+
+
+class EncoderFeatureExtractor(nn.Module):
+    """
+    Create a MLP (multilayer perceptron) to transform the patch features from output and input into shared feature space
+    Approach is taken from SimCLR: https://arxiv.org/pdf/2002.05709.pdf
+    """
+    def __init__(self, gpu, n_features=256):
+        self.norm = Normalize(2)
+        self.gpu = gpu
+        self.n_features = n_features
+        # note: the MLP is not defined here since it depends on the number of patches and size of input images from the forward method
+
+
+    def forward(self, feats, num_patches, patch_ids=None):
+        """
+        Performs a forward pass for an EncoderFeatureExtractor (called Hl in this paper: https://arxiv.org/pdf/2007.15651.pdf)
+
+        Args: 
+            feats: A tensor containing features passed from the generator encoder
+            num_patches: The number of patches to sample from feats
+            patch_ids: The indexes of patches to select from feats (this is != None when a forward call has been used on the source images and we want to take the same patches from the target images)
+        """
+        pass
+    
