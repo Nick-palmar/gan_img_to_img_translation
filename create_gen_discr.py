@@ -62,6 +62,8 @@ class ResBlock(nn.Module):
 class Generator(nn.Module):
     """
     Create a generator model (both encoder and decoder) which uses a resnet architecture as the encoder and transpoed 2d convolutions for decoder
+
+    Note that sometimes only certain layers will be taken from the encoder
     """
     def __init__(self, in_ch, out_ch, base_ch=64, n_blocks=6, n_downsamples=2):
         """
@@ -90,7 +92,8 @@ class Generator(nn.Module):
         self.res_layers = self._create_res_layers()
 
         # create the encoder and decoder for the resnet
-        self.encoder = nn.Sequential(*[self.stem, self.res_layers])
+        self.encoder = nn.Sequential(*self.stem+self.res_layers)
+        # print(self.encoder)
         # create upsampling layers for the decoder
         anti_stem_sizes = stem_sizes[::-1]
         self.decoder = self._create_decoder(anti_stem_sizes)
@@ -110,13 +113,13 @@ class Generator(nn.Module):
             _single_conv(sizes[i], sizes[i+1], 3, stride = 2 if i < self.n_downsamples else 1) 
             for i in range(len(sizes)-1)
         ]
-        return nn.Sequential(*stem)
+        return stem
     
     def _create_res_layers(self):
         # create multiplication factor
         mult = 2**self.n_downsamples
         layers = [ResBlock(self.base_ch*mult, self.base_ch*mult) for i in range(self.n_blocks)]
-        return nn.Sequential(*layers)
+        return layers
     
     def _create_decoder(self, sizes):
         # print(sizes)
@@ -130,8 +133,22 @@ class Generator(nn.Module):
         return nn.Sequential(*decoder)
     
 
-    def forward(self, x, encode_only=False):
-        # first apply encoder
+    def forward(self, x, layers=[], encode_only=False):
+        """
+        Generator forward pass; only forward the specific layers if they were passed (if no layers, return entire encoder + decoder)
+        """
+        # only output specific generator encoder layers
+        if len(layers) > 0 and encode_only:
+            encoder_layer_outs = [] # list of activation maps when one index corresponds to a layer of the encoder
+            for layer_id, layer in enumerate(self.encoder):
+                # compute the output for the layer
+                x = layer(x)
+                # only add the layer activation map to the output if in the list of layers (this will be used as one of the layers by PatchNCELoss)
+                if layer_id in layers:
+                    encoder_layer_outs.append(x)
+            return encoder_layer_outs
+
+        # first apply encoder - only reaches this part if layers is empty
         enc_x = self.encoder(x)
         # print(enc_x.shape)
         # return only encoder results for patchNCELoss
@@ -248,11 +265,13 @@ class EncoderFeatureExtractor(nn.Module):
     Create a MLP (multilayer perceptron) to transform the patch features from output and input into shared feature space
     Approach is taken from SimCLR: https://arxiv.org/pdf/2002.05709.pdf
     """
-    def __init__(self, gpu, n_features=256):
+    def __init__(self, gpu, gen_stem_sizes, n_features=256):
         self.norm = Normalize(2)
         self.gpu = gpu
         self.n_features = n_features
-        # note: the MLP is not defined here since it depends on the number of patches and size of input images from the forward method
+        # Create a multilayer perceptron to take the encoder channels and transform them to a space for the PatchNCE loss to use
+        # Keep it simple and create a single MLP for the entire network (the original paper creates a new mlp per batch)
+        self.mlp = nn.Sequential(*[nn.Linear(gen_stem_sizes[-1], self.n_features), nn.ReLU(), nn.Linear(self.n_features, self.n_features)])
 
 
     def forward(self, feats, num_patches, patch_ids=None):
@@ -260,9 +279,14 @@ class EncoderFeatureExtractor(nn.Module):
         Performs a forward pass for an EncoderFeatureExtractor (called Hl in this paper: https://arxiv.org/pdf/2007.15651.pdf)
 
         Args: 
-            feats: A tensor containing features passed from the generator encoder
+            feats: A tensor containing features passed from the generator encoder (assume size bs*channels*H*W)
             num_patches: The number of patches to sample from feats
             patch_ids: The indexes of patches to select from feats (this is != None when a forward call has been used on the source images and we want to take the same patches from the target images)
+        
+        Returns: 
+            A tuple of lists, the first list being 
         """
-        pass
+        return_ids = []
+        return_feats = []
+        
     

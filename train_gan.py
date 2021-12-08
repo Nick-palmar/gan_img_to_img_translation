@@ -3,6 +3,8 @@ from data_utility import show_batch, Data, save_images
 import os
 from create_gen_discr import Generator, Disciminator
 
+# layers to look at for nce
+nce_layers = [0, 2, 4, 5, 7, 9, 10]
 
 def main():
     data = Data('apples', 'oranges', False, 64, (128, 128))
@@ -20,6 +22,8 @@ def main():
         # print(x_1.shape)
         # print(x_1.shape)
         full_gen_x = generator(x_1)
+        enc_gen_x = generator(x_1, layers=nce_layers, encode_only=True)
+        print('gen', full_gen_x.shape, len(enc_gen_x), enc_gen_x[0].shape, enc_gen_x[-1].shape)
         # print('Output shape', full_gen_x.shape)
         # save_images(full_gen_x, f'img_generator_{i}.png')
         discr_real = discriminator(x_1)
