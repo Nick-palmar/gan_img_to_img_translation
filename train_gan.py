@@ -12,7 +12,8 @@ def main():
     # show_batch(data, 9)
     
     # Test full generator and only encoder part of generator on batch of images
-    generator = Generator(3, 3)
+    generator = Generator(3, 3, nce_layers)
+    nce_layer_channels = generator.feature_extractor_channels
     # change the nlayers parameter to change the output map size from the discriminator (128//2**n_layers)
     discriminator = Disciminator(3, n_layers=4)
 

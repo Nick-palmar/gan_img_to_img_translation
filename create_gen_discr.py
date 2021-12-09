@@ -65,11 +65,12 @@ class Generator(nn.Module):
 
     Note that sometimes only certain layers will be taken from the encoder
     """
-    def __init__(self, in_ch, out_ch, base_ch=64, n_blocks=6, n_downsamples=2):
+    def __init__(self, in_ch, out_ch, nce_layers, base_ch=64, n_blocks=6, n_downsamples=2):
         """
         Args:
             in_ch: Number of input channels in input tensor image
             out_ch: Number of output channels for output tensor image
+            nce_layers: A list of layers that the patchNCE loss function will be using from the encoder
             base_ch: Base number of channels throughout network
             n_blocks: Number of residual blocks to use
             n_downsamples: Number of downsamples to apply in the network stem
@@ -97,6 +98,9 @@ class Generator(nn.Module):
         # create upsampling layers for the decoder
         anti_stem_sizes = stem_sizes[::-1]
         self.decoder = self._create_decoder(anti_stem_sizes)
+
+        # determine the layer channels for the Hl (feature extractor) network
+        self._determine_layer_channels(nce_layers)
     
     def _create_stem_sizes(self):
         sizes = [self.in_ch, self.base_ch//2, self.base_ch//2, self.base_ch]
@@ -132,6 +136,27 @@ class Generator(nn.Module):
         ]
         return nn.Sequential(*decoder)
     
+    def _determine_layer_channels(self, layers):
+        """
+        Determines the channels for the output layers that generator encoder will produce
+        """
+        # create a list of channels that will be used by the feature extractor
+        self.feature_extractor_channels = []
+        for layer_id, layer in enumerate(self.encoder):
+            # only add the channels to the feature extractor channels if it is in the list of layers
+            if layer_id in layers:
+                if hasattr(layer, 'conv'):
+                    try:
+                        conv_out = layer.conv[2][0]
+                    except:
+                        print("The resblock has a different configuration as expected")
+                try:
+                    if type(layer[0]) == nn.Conv2d:
+                        conv_out = layer[0]
+                except:
+                    print("The conv layer has a different configuration as expected")
+                self.feature_extractor_channels.append(conv_out.out_channels)
+
 
     def forward(self, x, layers=[], encode_only=False):
         """
