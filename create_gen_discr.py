@@ -1,6 +1,11 @@
+from torch._C import _propagate_and_assign_input_shapes
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
+import numpy as np
+
+# get an instance of a generator to use for numpy random calls
+rng = np.random.default_rng()
 
 def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='batch', transpose=False, leaky=False):
         # do not reduce size due to ks mismatch
@@ -290,13 +295,25 @@ class EncoderFeatureExtractor(nn.Module):
     Create a MLP (multilayer perceptron) to transform the patch features from output and input into shared feature space
     Approach is taken from SimCLR: https://arxiv.org/pdf/2002.05709.pdf
     """
-    def __init__(self, gpu, gen_stem_sizes, n_features=256):
+    def __init__(self, gpu, nce_layer_channels, n_features=256):
         self.norm = Normalize(2)
         self.gpu = gpu
         self.n_features = n_features
-        # Create a multilayer perceptron to take the encoder channels and transform them to a space for the PatchNCE loss to use
-        # Keep it simple and create a single MLP for the entire network (the original paper creates a new mlp per batch)
-        self.mlp = nn.Sequential(*[nn.Linear(gen_stem_sizes[-1], self.n_features), nn.ReLU(), nn.Linear(self.n_features, self.n_features)])
+        # create the mlp for each layer that will be used for nce (based on the channels)
+        self.mlps = self._create_mlp(nce_layer_channels)
+    
+    def _create_mlp(self, layer_channels):
+        """
+        Create a two layer fully connected network for each of the layers with the corresponding channel sizes
+        """
+        mlps = []
+        for ch_in in layer_channels:
+            mlps.append(nn.Sequential(*[
+                nn.Linear(ch_in, self.n_features), 
+                nn.ReLU(), 
+                nn.Linear(self.n_features, self.n_features)
+                ]))
+        return mlps
 
 
     def forward(self, feats, num_patches, patch_ids=None):
@@ -304,14 +321,56 @@ class EncoderFeatureExtractor(nn.Module):
         Performs a forward pass for an EncoderFeatureExtractor (called Hl in this paper: https://arxiv.org/pdf/2007.15651.pdf)
 
         Args: 
-            feats: A tensor containing features passed from the generator encoder (assume size bs*channels*H*W)
+            feats: A list containing tensor features passed from specific layer of the generator encoder (assume tensors of size bs*channels*H*W)
             num_patches: The number of patches to sample from feats
-            patch_ids: The indexes of patches to select from feats (this is != None when a forward call has been used on the source images and we want to take the same patches from the target images)
+            patch_ids: The indexes of patches to select from each layer of feats (this is != None when a forward call has been used on the source images and we want to take the same patches from the target images)
         
         Returns: 
             A tuple of lists, the first list being 
         """
         return_ids = []
         return_feats = []
+
+        # go through each of the feature layers while grabbing corresponding mlp
+        for feat_id, (mlp, feat) in enumerate(zip(self.mlps, feats)):
+            # reshape the feature tensor to be (bs*img_locs*channels)
+            feat_reshaped = feat.flatten(2, 3).permute(0, 2, 1)
+            print('feats', feat.shape, feat_reshaped.shape)
+
+            if num_patches > 0:
+                # get the patch id for the current layer if the patch_ids exist
+                if patch_ids is not None:
+                    patch_id = patch_ids[feat_id]
+                # create the patches if the patch ids DNE
+                else:
+                    # get random permutation of all indices from 0 to max img loc (axis=1)
+                    patch_id = rng.permutation(feat_reshaped.shape[1])
+                    # index the patch_id to extract first num_patch locations 
+                    if num_patches < len(patch_id):
+                        patch_id = patch_id[:num_patches]
+                # index only the patches that will be used from feats_reshaped (axis 1 is the img_loc axis)
+                # note that in practice, bs=1 so that we only compare batches in the same image (internal patches outperforms external patches)
+                feat_patch_sampled = feat_reshaped[:, patch_id, :].view(-1, feat_reshaped.shape[2]) # flatten the tensor to be of shape (patch_loc, channels). The PatchNCE loss will be done regardless of batch (this makes it by patches and not by image)
+            else:
+                # the number of patches is zero or negative; take all patches 
+                feat_patch_sampled = feat_reshaped
+                patch_id = []
+             
+            # apply the mlp (H sub l) to select patches
+            feat_sampled_emb_space = mlp(feat_patch_sampled)
+            # "We normalize vectors onto a unit sphere to prevent the space from collapsing or expanding"
+            feat_norm = self.norm(feat_sampled_emb_space)
+            return_ids.append(patch_id)
+
+            # if zero patches, return in as similar a shape as possible (but in dimensions of shared embedding space after passing through mlp)
+            if num_patches == 0:
+                batch, _, h, w = feat.shape
+                n_emb_feat = feat_norm.shape[-1]
+                # shape is (bs*img_loc*emb_features) -> (bs*emb_features*img_loc)
+                feat_norm = feat_norm.permute(0, 2, 1).view(batch, n_emb_feat, h, w)
+            return_feats.append(feat_norm)
+        
+        return return_feats, return_ids
+
         
     
