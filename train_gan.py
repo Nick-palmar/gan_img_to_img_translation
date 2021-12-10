@@ -1,7 +1,9 @@
 
 from data_utility import show_batch, Data, save_images
 import os
-from create_gen_discr import Generator, Disciminator
+from create_gen_discr import Generator, Disciminator, EncoderFeatureExtractor
+
+from testing import test_mlp_network
 
 # layers to look at for nce
 nce_layers = [0, 2, 4, 5, 7, 9, 10]
@@ -17,9 +19,13 @@ def main():
     # change the nlayers parameter to change the output map size from the discriminator (128//2**n_layers)
     discriminator = Disciminator(3, n_layers=4)
 
+    # create the feature encoder mlp
+    feature_extractor = EncoderFeatureExtractor(None, nce_layer_channels)
+
     for i, (x, _) in enumerate(data.dlSourceTrain):
         # take a single image
         x_1 = x[:10]
+        test_mlp_network(x_1, generator, feature_extractor, x_1.shape[0])
         # print(x_1.shape)
         # print(x_1.shape)
         full_gen_x = generator(x_1)

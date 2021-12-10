@@ -105,6 +105,7 @@ class Generator(nn.Module):
         self.decoder = self._create_decoder(anti_stem_sizes)
 
         # determine the layer channels for the Hl (feature extractor) network
+        self.nce_layers = nce_layers
         self._determine_layer_channels(nce_layers)
     
     def _create_stem_sizes(self):
@@ -148,6 +149,7 @@ class Generator(nn.Module):
         # create a list of channels that will be used by the feature extractor
         self.feature_extractor_channels = []
         for layer_id, layer in enumerate(self.encoder):
+            # print(layer, hasattr(layer, 'conv'))
             # only add the channels to the feature extractor channels if it is in the list of layers
             if layer_id in layers:
                 if hasattr(layer, 'conv'):
@@ -155,11 +157,12 @@ class Generator(nn.Module):
                         conv_out = layer.conv[2][0]
                     except:
                         print("The resblock has a different configuration as expected")
-                try:
-                    if type(layer[0]) == nn.Conv2d:
-                        conv_out = layer[0]
-                except:
-                    print("The conv layer has a different configuration as expected")
+                else:
+                    try:
+                        if type(layer[0]) == nn.Conv2d:
+                            conv_out = layer[0]
+                    except:
+                        print("The conv layer has a different configuration as expected")
                 self.feature_extractor_channels.append(conv_out.out_channels)
 
 
@@ -167,6 +170,8 @@ class Generator(nn.Module):
         """
         Generator forward pass; only forward the specific layers if they were passed (if no layers, return entire encoder + decoder)
         """
+        # TODO: Consider removing the layers input var
+        layers = self.nce_layers
         # only output specific generator encoder layers
         if len(layers) > 0 and encode_only:
             encoder_layer_outs = [] # list of activation maps when one index corresponds to a layer of the encoder
@@ -296,8 +301,16 @@ class EncoderFeatureExtractor(nn.Module):
     Approach is taken from SimCLR: https://arxiv.org/pdf/2002.05709.pdf
     """
     def __init__(self, gpu, nce_layer_channels, n_features=256):
+        """
+        Creates the MLP network (H sub l in the paper) that will transform input encoder patches to a shared embedding space
+
+        Args: 
+            nce_layer_channels: A list containing the size of the channels for each of the layers that will be used by nce loss
+            n_features: An integer which is the number of features that the transformed space will have
+        """
+        super().__init__()
         self.norm = Normalize(2)
-        self.gpu = gpu
+        # self.gpu = gpu
         self.n_features = n_features
         # create the mlp for each layer that will be used for nce (based on the channels)
         self.mlps = self._create_mlp(nce_layer_channels)
