@@ -7,37 +7,61 @@ import numpy as np
 # get an instance of a generator to use for numpy random calls
 rng = np.random.default_rng()
 
+class Normalize(nn.Module):
+    """
+    Normalization layer taken from https://github.com/taesungp/contrastive-unpaired-translation/blob/57430e99df041515c57a7ffd18bb7cbc3c1af0a9/models/networks.py#L449
+
+    The CUT GAN paper states "We normalize vectors onto a unit sphere to prevent the space from collapsing or expanding"
+    This layer is used to normalize vectors onto a unit sphere by using l2 norm
+    """
+    def __init__(self, power=2):
+        super(Normalize, self).__init__()
+        self.power = power
+
+    def forward(self, x):
+        # compute the l2 vector norm
+        norm = x.pow(self.power).sum(1, keepdim=True).pow(1. / self.power)
+        # scale the input x by the norm
+        out = x.div(norm + 1e-7)
+        return out
+
 def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='batch', transpose=False, leaky=False):
-        # do not reduce size due to ks mismatch
-        padding = ks//2
-        if not transpose:
-            layers = [nn.Conv2d(ch_in, ch_out, ks, stride=stride, padding=padding)]
-        else:
-            layers = [nn.ConvTranspose2d(ch_in, ch_out, ks, stride=stride, padding=padding)]
+    """
+    Layer to perform a single convolution, normalization (batch or instance) and activation function (relu and leaky relu)
+    """
+    # do not reduce size due to ks mismatch
+    padding = ks//2
+    if not transpose:
+        layers = [nn.Conv2d(ch_in, ch_out, ks, stride=stride, padding=padding)]
+    else:
+        layers = [nn.ConvTranspose2d(ch_in, ch_out, ks, stride=stride, padding=padding)]
 
-        # add norm layer to prevent activations from getting too high
-        if norm=='instance':
-            norm_layer = nn.InstanceNorm2d(ch_out, affine=False, track_running_stats=False)
-        elif norm=='batch':
-            norm_layer = nn.BatchNorm2d(ch_out, affine=True, track_running_stats=True)
-        else:
-            raise Exception(f'Norm should be either "instance" or "batch" but {norm} was passed')
+    # add norm layer to prevent activations from getting too high
+    if norm=='instance':
+        norm_layer = nn.InstanceNorm2d(ch_out, affine=False, track_running_stats=False)
+    elif norm=='batch':
+        norm_layer = nn.BatchNorm2d(ch_out, affine=True, track_running_stats=True)
+    else:
+        raise Exception(f'Norm should be either "instance" or "batch" but {norm} was passed')
 
-        if gammaZero and norm_layer=='batch':
-            # init batch norm gamma param to zero to speed up training 
-            nn.init.zeros_(norm_layer.weight.data)
+    if gammaZero and norm_layer=='batch':
+        # init batch norm gamma param to zero to speed up training 
+        nn.init.zeros_(norm_layer.weight.data)
 
-        layers.append(norm_layer)
-        # check if this layer should have an activation - yes unless the final layer
-        if act and not leaky:
-            layers.append(nn.ReLU())
-        elif act and leaky:
-            layers.append(nn.LeakyReLU(0.2))
-        
-        layers = nn.Sequential(*layers)
-        return layers
+    layers.append(norm_layer)
+    # check if this layer should have an activation - yes unless the final layer
+    if act and not leaky:
+        layers.append(nn.ReLU())
+    elif act and leaky:
+        layers.append(nn.LeakyReLU(0.2))
+    
+    layers = nn.Sequential(*layers)
+    return layers
 
 class ResBlock(nn.Module):
+    """
+    Residual blocks to be used by both the generator and discriminator
+    """
     def __init__(self, ch_in, ch_out, stride=1, leaky=False):
         super().__init__()
         self.conv = self._resblock_conv(ch_in, ch_out, leaky, stride=stride)
@@ -232,68 +256,6 @@ class Disciminator(nn.Module):
         return out
 
 
-class DGANLoss(nn.Module):
-    """
-    Defines the GAN loss function for the discriminator's predictions of real or fake on data
-    """
-    def __init__(self, mode):
-        self.mode = mode
-
-        # define the loss to be used when receiving a grid of activaitons (predictions) for an image
-        if self.mode == 'lsgan':
-            self.loss = nn.MSELoss()
-        elif self.mode == 'vanilla':
-            self.loss = nn.BCEWithLogitsLoss()
-        elif self.mode == 'non-saturating':
-            self.loss = None
-        else:
-            raise NotImplementedError(f"The mode {mode} for DGANLoss is not implemented")
-    
-    def create_targ_tensor(inp, is_real):
-        if is_real:
-            targ_tensor = torch.Tensor([1])
-        else:
-            targ_tensor = torch.Tensor([0])
-        # returns the target tensor in the same shape as the input (since it will be a grid of activations from the discriminator)
-        return targ_tensor.expand_as(inp)
-        
-    
-    def forward(self, x, is_real):
-        if self.mode in ['lsgan', 'vanilla']:
-            # create an equal shaped target tensor and compute the loss
-            targ_tens = self.create_targ_tensor(x, is_real)
-            loss = self.loss(x, targ_tens)
-        # non-saturating loss is being used
-        else:
-            if is_real:
-                # minimize the loss by passing softplus(-x) = ln(1+e**-x) as x -> +inf (real prediction get predicted more real) => e**-x -> 0 => softplus(-x) -> 0+
-                loss = F.softplus(-x)
-            else:
-                # minimize the loss by passing softplus(x) = ln(1+e**x) as x -> -inf (fake prediction get predicted more fake) => e**x -> 0 => softplus(x) -> 0+
-                loss = F.softplus(x)
-
-            # since the discriminator is giving a grid of activations, group the loss by batch and take the mean along the activation dimension
-            loss = loss.view(x.shape[0], -1).mean(1)
-        return loss
-
-class Normalize(nn.Module):
-    """
-    Normalization layer taken from https://github.com/taesungp/contrastive-unpaired-translation/blob/57430e99df041515c57a7ffd18bb7cbc3c1af0a9/models/networks.py#L449
-
-    The CUT GAN paper states "We normalize vectors onto a unit sphere to prevent the space from collapsing or expanding"
-    This layer is used to normalize vectors onto a unit sphere by using l2 norm
-    """
-    def __init__(self, power=2):
-        super(Normalize, self).__init__()
-        self.power = power
-
-    def forward(self, x):
-        # compute the l2 vector norm
-        norm = x.pow(self.power).sum(1, keepdim=True).pow(1. / self.power)
-        # scale the input x by the norm
-        out = x.div(norm + 1e-7)
-        return out
-
 
 class EncoderFeatureExtractor(nn.Module):
     """
@@ -363,6 +325,7 @@ class EncoderFeatureExtractor(nn.Module):
                         patch_id = patch_id[:num_patches]
                 # index only the patches that will be used from feats_reshaped (axis 1 is the img_loc axis)
                 # note that in practice, bs=1 so that we only compare batches in the same image (internal patches outperforms external patches)
+                # TODO: Consider removing the .view() at the end of the next line
                 feat_patch_sampled = feat_reshaped[:, patch_id, :].view(-1, feat_reshaped.shape[2]) # flatten the tensor to be of shape (patch_loc, channels). The PatchNCE loss will be done regardless of batch (this makes it by patches and not by image)
             else:
                 # the number of patches is zero or negative; take all patches 
