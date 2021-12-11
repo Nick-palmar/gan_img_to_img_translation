@@ -1,4 +1,3 @@
-from torch._C import _propagate_and_assign_input_shapes
 import torch.nn as nn
 import torch
 import torch.nn.functional as F

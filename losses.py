@@ -48,5 +48,39 @@ class DGANLoss(nn.Module):
 
 class PatchNCELoss(nn.Module):
     """
-    
+    The patch NCE loss to associate similar sections in source and target images
     """
+    def __init__(self, tau, bs):
+        self.loss = nn.CrossEntropyLoss(reduction='none')
+        # assume bs=1 by default
+        self.bs = bs
+        # division factor for scaling outputs
+        self.tau = tau
+    
+    def forward(self, real_feats, fake_feats):
+        n_patches = real_feats.shape[0]
+        n_transformed_space = real_feats.shape[1]
+        fake_feats = fake_feats.detach()
+
+        # create the positive feature results by doing (1, bs*n_transformed_space) * (bs*n_transformed_space, 1) = (1, 1) for each patch in the group
+        l_pos = torch.bmm(real_feats.view(n_patches, 1, -1), fake_feats.view(n_patches, -1, 1)).view(n_patches, 1)
+
+        real_feats = real_feats.view(self.bs, -1, n_transformed_space)
+        fake_feats = fake_feats.view(self.bs, -1, n_transformed_space)
+        # the new number of patches is the number of patches by image
+        n_patches = real_feats.shape[1]
+        # create the negative feature results by doing (n_patches, n_transformed_space) * (n_transformed_space, n_patches) = (n_patches, n_patches)
+        l_neg_batch = torch.bmm(real_feats, fake_feats.transpose(2, 1))
+        # remove meaningless diagonal entries by masking the l_neg_batch with an identity matrix
+        diag = torch.eye(n_patches, device=real_feats.device)
+        l_neg_batch.masked_fill_(diag, -10.0)
+        l_neg = l_neg_batch.view(n_patches, -1) # NOTICE: this line is different from the paper
+
+        # concat over patch dimension (1 pos and n_patch neg patches)
+        out = torch.cat([l_pos, l_neg], dim=1) / self.tau
+        # the target feature is alway the l_pos feature of out which is at index 0
+        targs = torch.zeros(out.shape[0], device=real_feats.device).long()
+        loss = self.loss(out, targs)
+        return loss
+
+
