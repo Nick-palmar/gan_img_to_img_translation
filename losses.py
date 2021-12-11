@@ -7,6 +7,7 @@ class DGANLoss(nn.Module):
     Defines the GAN loss function for the discriminator's predictions of real or fake on data
     """
     def __init__(self, mode):
+        super().__init__()
         self.mode = mode
 
         # define the loss to be used when receiving a grid of activaitons (predictions) for an image
@@ -19,7 +20,7 @@ class DGANLoss(nn.Module):
         else:
             raise NotImplementedError(f"The mode {mode} for DGANLoss is not implemented")
     
-    def create_targ_tensor(inp, is_real):
+    def create_targ_tensor(self, inp, is_real):
         if is_real:
             targ_tensor = torch.Tensor([1])
         else:
@@ -46,6 +47,7 @@ class DGANLoss(nn.Module):
             loss = loss.view(x.shape[0], -1).mean(1)
         return loss
 
+# TODO: Ask prof for help understanding math behind this loss function
 class PatchNCELoss(nn.Module):
     """
     The patch NCE loss to associate similar sections in source and target images

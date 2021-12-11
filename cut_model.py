@@ -99,11 +99,27 @@ class CUT_gan(nn.Module):
         self.gen_optim.step()
         self.feat_net_optim.step()
 
-    # TODO: Create method to compute discriminator loss in training
+
+    # TODO: ensure that keeping the loss as variables and not class attibutes does not affect back propagation
     def calc_d_loss(self):
-        pass
+        """
+        Calculates discriminator loss
+        """
+        # prevent generator from updating
+        fake_targ = self.fake_targ.detach()
+        # fake target loss
+        fake_pred = self.disc(fake_targ)
+        fake_loss = self.dgan_loss(fake_pred, False)
+        # real target loss
+        real_pred = self.disc(self.real_targ)
+        real_loss = self.dgan_loss(real_pred, True)
+        # combine both fake and real target loss
+        return (fake_loss + real_loss) * 0.5
 
     # TODO: Create method to compute generator loss in training
     def calc_g_loss(self):
+        """
+        Calculates generator loss
+        """
         pass
 

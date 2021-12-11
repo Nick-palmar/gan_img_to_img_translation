@@ -1,7 +1,12 @@
 import torch
 from data_utility import set_requires_grad
-from create_gen_discr import Disciminator
+from create_gen_discr import Disciminator, Generator
+from losses import DGANLoss
+from data_utility import Data
+
 n_patches=64
+nce_layers = [0, 2, 4, 5, 7, 9, 10]
+
 
 def test_mlp_network(x, generator, encoder_network, bs):
     enc_gen_x = generator(x, encode_only=True)
@@ -36,8 +41,25 @@ def test_set_requires_grad():
     make_param_assert(d, True)
     print("all assertions passed")
 
+def test_d_loss():
+    for loss_type in ['non-saturating', 'lsgan', 'vanilla']:
+        dloss = DGANLoss(loss_type)
+        data = Data('apples', 'oranges', False, 1, (128, 128))
+        data.get_loaders('apples_and_oranges')
+        generator = Generator(3, 3, nce_layers)
+        discriminator = Disciminator(3, n_layers=4)
+
+        for i, (x, _) in enumerate(data.dlSourceTrain):
+            fake_x = generator(x)
+            pred_fake = discriminator(fake_x)
+            loss = dloss(pred_fake, False)
+            # loss.backward()
+            print(loss_type, loss.item())
+            break
+
 def main():
-    test_set_requires_grad()
+    # test_set_requires_grad()
+    test_d_loss()
 
 
 main()
