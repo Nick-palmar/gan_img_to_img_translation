@@ -108,4 +108,10 @@ def show_batch(data: Data, n: int, folder: str='output') -> matplotlib.image.Axe
             plt.savefig(os.path.join(folder, file))
             break
     
-
+def set_requires_grad(net, requires_grad):
+    """
+    Freezes or unfreezes a network (for the weight to change or not during training)
+    Note that this is pass by reference so returns None
+    """
+    for param in net.parameters():
+        param.requires_grad = requires_grad

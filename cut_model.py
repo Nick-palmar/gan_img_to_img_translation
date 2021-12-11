@@ -1,7 +1,9 @@
+import torch
 import torch.nn as nn
 import torch.optim as optim
 from create_gen_discr import Generator, Disciminator, EncoderFeatureExtractor
 from losses import DGANLoss, PatchNCELoss
+from data_utility import set_requires_grad
 
 class CUT_gan(nn.Module):
     def __init__(self, lambda_gan, lambda_nce, nce_layers, device, lr, nce_idt=True, encoder_net_features=256, nce_tau=0.07, num_patches=256, train=True, gan_l_type='non-saturating', bs=1):
@@ -48,11 +50,60 @@ class CUT_gan(nn.Module):
             self.disc_optim = optim.Adam(self.disc.parameters(), lr=lr)
             self.feat_net_optim = optim.Adam(self.feat_net.parameters(), lr=lr)
         
-    # TODO: create the method for the forward pass to be used in training and inference
 
-    # TODO: Create method to optimize all parameters in training
+    def forward(self, real_src, real_targ):
+        """
+        Does a forward pass of the generator for training and inference.
+
+        Saves the real source, real target, and fake target images.
+        Also, if nce_idt and train are True, saves the fake source images. 
+        """
+        # save the current real src and targ images to pass to other functions
+        self.real_src = real_src
+        self.real_targ = real_targ
+        if self.train and self.nce_idt:
+            # put the real source and target images if in training and using identity nce loss
+            real = torch.cat((real_src, real_targ), dim=0)
+        else:
+            real = real_src
+        
+        # use the generator on real images
+        fake = self.gen(real)
+        # get fake target images (y hat)
+        self.fake_targ = fake[:real_src.shape[0]]
+        # if possible, get fake source images for identity loss (x tilde)
+        if self.train and self.nce_idt:
+            self.fake_src = fake[real_src.shape[0]:]
+
+
+    def optimize_params(self):
+        """
+        Forward pass, loss, back propagate, and step for all 3 networks to optmize all the params
+        """
+        # forward pass
+        self.forward()
+
+        # discriminator param update
+        set_requires_grad(self.disc, True)
+        self.disc_optim.zero_grad()
+        loss_d = self.calc_d_loss()
+        loss_d.backward()
+        self.disc_optim.step()
+
+        # generator and encoder feature extractor param update
+        set_requires_grad(self.disc, False)
+        self.gen_optim.zero_grad()
+        self.feat_net_optim.zero_grad()
+        loss_g = self.calc_g_loss()
+        loss_g.backward()
+        self.gen_optim.step()
+        self.feat_net_optim.step()
 
     # TODO: Create method to compute discriminator loss in training
+    def calc_d_loss(self):
+        pass
 
     # TODO: Create method to compute generator loss in training
+    def calc_g_loss(self):
+        pass
 

@@ -1,4 +1,6 @@
 import torch
+from data_utility import set_requires_grad
+from create_gen_discr import Disciminator
 n_patches=64
 
 def test_mlp_network(x, generator, encoder_network, bs):
@@ -18,3 +20,24 @@ def test_mlp_network(x, generator, encoder_network, bs):
         print(layer_1.shape)
 
     print("all assertions passed")
+
+def make_param_assert(net, exp_requires_grad):
+    for param in net.parameters():
+        assert(param.requires_grad == exp_requires_grad)
+
+def test_set_requires_grad():
+    """
+    This assertion confirmed that the pytorch nn.Module network is pass by reference
+    """
+    d = Disciminator(3)
+    set_requires_grad(d, False)
+    make_param_assert(d, False)
+    set_requires_grad(d, True)
+    make_param_assert(d, True)
+    print("all assertions passed")
+
+def main():
+    test_set_requires_grad()
+
+
+main()
