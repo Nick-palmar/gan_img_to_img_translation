@@ -261,7 +261,7 @@ class EncoderFeatureExtractor(nn.Module):
     Create a MLP (multilayer perceptron) to transform the patch features from output and input into shared feature space
     Approach is taken from SimCLR: https://arxiv.org/pdf/2002.05709.pdf
     """
-    def __init__(self, gpu, nce_layer_channels, n_features=256):
+    def __init__(self, nce_layer_channels, n_features=256):
         """
         Creates the MLP network (H sub l in the paper) that will transform input encoder patches to a shared embedding space
 
