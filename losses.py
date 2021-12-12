@@ -62,6 +62,7 @@ class PatchNCELoss(nn.Module):
     def forward(self, real_feats, fake_feats):
         n_patches = real_feats.shape[0]
         n_transformed_space = real_feats.shape[1]
+        # detach generator for the real features
         fake_feats = fake_feats.detach()
 
         # create the positive feature results by doing (1, bs*n_transformed_space) * (bs*n_transformed_space, 1) = (1, 1) for each patch in the group

@@ -116,10 +116,42 @@ class CUT_gan(nn.Module):
         # combine both fake and real target loss
         return (fake_loss + real_loss) * 0.5
 
-    # TODO: Create method to compute generator loss in training
+
     def calc_g_loss(self):
         """
         Calculates generator loss
         """
-        pass
+        # check normal GAN loss on discriminator with fake generator images
+        pred_fake = self.disc(self.fake_targ)
+        gan_loss = self.dgan_loss(pred_fake, False) * self.lambda_gan
 
+        # use patch NCE loss for src -> fake targ
+        nce_loss = self.calc_nce_loss(self.real_src, self.real_targ)
+        # use patch NCE loss for targ -> fake source (identity loss)
+        nce_identity_loss = self.calc_nce_loss(self.real_targ, self.fake_src)
+        # get total nce loss
+        nce_loss_total = (nce_loss + nce_identity_loss) * 0.5
+        # get total loss (Lgan + NCE loss + identity NCE loss)
+        loss_total = nce_loss_total + gan_loss
+        return loss_total
+
+
+    def calc_nce_loss(self, src, targ):
+        """
+        Calculates the NCE loss using patches to associate similar locations and dissociate different locations
+        """
+        # get the pathces for source after doing H sub l(G enc(x))
+        src_feats = self.gen(src, encode_only=True)
+        transformed_src_feats, patch_ids = self.feat_net(src_feats, self.num_patches)
+
+        # get the patches for target after doing H sub l(G enc(G(x))) 
+        targ_feats = self.gen(targ, encode_only=True)
+        transformed_targ_feats, _ = self.feat_net(targ_feats, self.num_patches, patch_ids=patch_ids)
+
+        total_loss = 0
+        # calculate the loss for each layer in the transformed returned features
+        for src_feat, targ_feat, nce_loss in zip(transformed_src_feats, transformed_targ_feats, self.nce_losses):
+            # TODO: Consider switching src_feats and targ_feats if training is not working well
+            total_loss += (nce_loss(src_feats, targ_feats) * self.lambda_nce).mean()
+        
+        return total_loss/len(self.gen.nce_layers)

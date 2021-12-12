@@ -5,7 +5,7 @@ from create_gen_discr import Generator, Disciminator, EncoderFeatureExtractor
 
 from testing import test_mlp_network
 
-# layers to look at for nce
+## layers to look at for nce
 nce_layers = [0, 2, 4, 5, 7, 9, 10]
 
 def main():

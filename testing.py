@@ -57,9 +57,19 @@ def test_d_loss():
             print(loss_type, loss.item())
             break
 
+def test_mat_mul():
+    tens1 = torch.randn((10, 3, 6))
+    tens2 = torch.randn((10, 3, 6))
+
+    t_mm = torch.matmul(tens1.transpose(2,1), tens2)
+    t_m_sum = (tens1*tens2).sum(dim=1)[:, :, None]
+    t_bmm = torch.bmm(tens1.transpose(2, 1), tens2)
+    print(t_mm.shape, t_m_sum.shape, t_bmm.shape)
+
 def main():
     # test_set_requires_grad()
-    test_d_loss()
+    # test_d_loss()
+    test_mat_mul()
 
 
 main()
