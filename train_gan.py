@@ -1,46 +1,54 @@
 
-from data_utility import show_batch, Data, save_images
-import os
-from create_gen_discr import Generator, Disciminator, EncoderFeatureExtractor
+from data_utility import Data, save_images
+from cut_model import CUT_gan
+import torch
 
-from testing import test_mlp_network
-
-## layers to look at for nce
+# define the params to pass to the cut gan model
+lambda_gan = 1
+lambda_nce = 1
 nce_layers = [0, 2, 4, 5, 7, 9, 10]
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
+print(f'Device: {device}')
+lr = 2e-3 # use the lr as recommended by the paper
+gan_l_type='non-saturating' # consider switching to lsgan as used in the paper
+bs = 1
+
+# define the number of epochs for training
+epochs = 1
 
 def main():
-    data = Data('apples', 'oranges', False, 64, (128, 128))
+    data = Data('apples', 'oranges', False, bs, (128, 128))
     data.get_loaders('apples_and_oranges')
     # show_batch(data, 9)
-    
-    # Test full generator and only encoder part of generator on batch of images
-    generator = Generator(3, 3, nce_layers)
-    nce_layer_channels = generator.feature_extractor_channels
-    # change the nlayers parameter to change the output map size from the discriminator (128//2**n_layers)
-    discriminator = Disciminator(3, n_layers=4)
 
-    # create the feature encoder mlp
-    feature_extractor = EncoderFeatureExtractor(None, nce_layer_channels)
+    # define the CUT gan model which has all 3 nets and training loop for the 3 nets
+    cut_model = CUT_gan(lambda_gan, lambda_nce, nce_layers, device, lr, gan_l_type=gan_l_type, bs=bs)
 
-    for i, (x, _) in enumerate(data.dlSourceTrain):
-        # take a single image
-        x_1 = x[:10]
-        test_mlp_network(x_1, generator, feature_extractor, x_1.shape[0])
-        # print(x_1.shape)
-        # print(x_1.shape)
-        full_gen_x = generator(x_1)
-        enc_gen_x = generator(x_1, layers=nce_layers, encode_only=True)
-        print('gen', full_gen_x.shape, len(enc_gen_x), enc_gen_x[0].shape, enc_gen_x[-1].shape)
-        # print('Output shape', full_gen_x.shape)
-        # save_images(full_gen_x, f'img_generator_{i}.png')
-        discr_real = discriminator(x_1)
-        discr_fake = discriminator(full_gen_x)
-        print(discr_real.shape, discr_fake.shape)
-        break
+    for epoch in range(epochs):
+        for i, ((x, _), (y, _)) in enumerate(zip(data.dlSourceTrain, data.dlTargetTrain)):
+            # print(x.shape, y.shape, i)
+            # ims = torch.cat((x, y), dim=0)
+            # save_images(ims, 'x_y_dl_test.png')
+            # set model to train
+            cut_model.train()
+            # move the image tensors onto the correct device
+            x = x.to(device)
+            y = y.to(device)
+            
+            cut_model.optimize_params(x, y)
+            print(f"Done training {epoch}.{i}")
+        
+        # output training loss and time
 
-
-
-    
-
+        # output validation loss and visuals
+        cut_model.eval()
+        for j, ((x, _), (y, _)) in enumerate(zip(data.dlSourceTest, data.dlTargetTest)):
+            # only see outputs of 5 images
+            if j > 5:
+                break
+            cut_model(x, y)
+            y_hat = cut_model.fake_targ
+            res_cat = torch.cat((x, y_hat), dim=0)
+            save_images(res_cat, f'ep{epoch}_{j}.png')
 
 main()

@@ -1,28 +1,55 @@
 import torch
 from data_utility import set_requires_grad
-from create_gen_discr import Disciminator, Generator
+from create_gen_discr import Disciminator, Generator, EncoderFeatureExtractor
 from losses import DGANLoss
 from data_utility import Data
 
+bs = 1
 n_patches=64
 nce_layers = [0, 2, 4, 5, 7, 9, 10]
+data = Data('apples', 'oranges', False, bs, (128, 128))
+data.get_loaders('apples_and_oranges')    
+# Test full generator and only encoder part of generator on batch of images
+generator = Generator(3, 3, nce_layers)
+nce_layer_channels = generator.feature_extractor_channels
+# change the nlayers parameter to change the output map size from the discriminator (128//2**n_layers)
+discriminator = Disciminator(3, n_layers=4)
+# create the feature encoder mlp
+encoder_network = EncoderFeatureExtractor(nce_layer_channels)
+
+def test_nets():
+    for i, (x, _) in enumerate(data.dlSourceTrain):
+        # print(x.shape)
+        full_gen_x = generator(x)
+        enc_gen_x = generator(x, layers=nce_layers, encode_only=True)
+        print('gen', full_gen_x.shape, len(enc_gen_x))
+        for layer, layer_idx in zip(enc_gen_x, generator.nce_layers):
+            print(f"layer{layer_idx}: {layer.shape}")
+        # save_images(full_gen_x, f'img_generator_{i}.png')
+        discr_real = discriminator(x)
+        discr_fake = discriminator(full_gen_x)
+        assert(discr_real.shape == discr_fake.shape)
+        break
 
 
-def test_mlp_network(x, generator, encoder_network, bs):
-    enc_gen_x = generator(x, encode_only=True)
-    new_space_x, ids = encoder_network(enc_gen_x, n_patches)
-    new_space_x_copy, _ = encoder_network(enc_gen_x, n_patches, patch_ids=ids)
+def test_mlp_network():
+    for i, (x, _) in enumerate(data.dlSourceTrain):
+        enc_gen_x = generator(x, encode_only=True)
+        new_space_x, ids = encoder_network(enc_gen_x, n_patches)
+        new_space_x_copy, _ = encoder_network(enc_gen_x, n_patches, patch_ids=ids)
 
-    # assertions to tet working mlp
-    # the end sizes are (bs*num_patches, self.n_features)
-    for layer_1, layer_2 in zip(new_space_x, new_space_x_copy):
-        # since encoder layers and ids are the same, both should be the same
-        assert(torch.equal(layer_1, layer_2))
-        # test the shape of the tensors are as expected 
-        assert(len(layer_1.shape) == 2)
-        assert(layer_1.shape[0] ==  bs*n_patches)
-        assert(layer_1.shape[1] == encoder_network.n_features)
-        print(layer_1.shape)
+        # assertions to tet working mlp
+        # the end sizes are (bs*num_patches, self.n_features)
+        for layer_1, layer_2 in zip(new_space_x, new_space_x_copy):
+            # since encoder layers and ids are the same, both should be the same
+            assert(torch.equal(layer_1, layer_2))
+            # test the shape of the tensors are as expected 
+            assert(len(layer_1.shape) == 2)
+            assert(layer_1.shape[0] ==  bs*n_patches)
+            assert(layer_1.shape[1] == encoder_network.n_features)
+            print(layer_1.shape)
+            # break
+        break
 
     print("all assertions passed")
 
@@ -69,7 +96,9 @@ def test_mat_mul():
 def main():
     # test_set_requires_grad()
     # test_d_loss()
-    test_mat_mul()
+    # test_mat_mul()
+    # test_mlp_network()
+    test_nets()
 
 
 main()

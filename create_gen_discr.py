@@ -114,7 +114,7 @@ class Generator(nn.Module):
         # create resnet encoder stem to downsample data n_downsample times and reach initial filter param
         # below should be: [in_ch, base_ch//2, base_ch//2, base_ch, base_ch*2, base_ch*4]
         stem_sizes = self._create_stem_sizes()
-        print(stem_sizes)
+        # print(stem_sizes)
         self.stem = self._create_stem(stem_sizes)
 
         # Add residual layers for resnet encoder
@@ -274,7 +274,7 @@ class EncoderFeatureExtractor(nn.Module):
         # self.gpu = gpu
         self.n_features = n_features
         # create the mlp for each layer that will be used for nce (based on the channels)
-        self.mlps = self._create_mlp(nce_layer_channels)
+        self.mlps = nn.ModuleList(self._create_mlp(nce_layer_channels)) # define this as a module list for pytorch to treat each module in the list on it's own
     
     def _create_mlp(self, layer_channels):
         """
@@ -309,7 +309,7 @@ class EncoderFeatureExtractor(nn.Module):
         for feat_id, (mlp, feat) in enumerate(zip(self.mlps, feats)):
             # reshape the feature tensor to be (bs*img_locs*channels)
             feat_reshaped = feat.flatten(2, 3).permute(0, 2, 1)
-            print('feats', feat.shape, feat_reshaped.shape)
+            # print('feats', feat.shape, feat_reshaped.shape)
 
             if num_patches > 0:
                 # get the patch id for the current layer if the patch_ids exist

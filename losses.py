@@ -53,6 +53,7 @@ class PatchNCELoss(nn.Module):
     The patch NCE loss to associate similar sections in source and target images
     """
     def __init__(self, tau, bs):
+        super().__init__()
         self.loss = nn.CrossEntropyLoss(reduction='none')
         # assume bs=1 by default
         self.bs = bs

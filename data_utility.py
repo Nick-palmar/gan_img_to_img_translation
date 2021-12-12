@@ -57,7 +57,7 @@ def create_dataloader(root: str, im_size: Tuple, bs: int) -> DataLoader:
     return dataloader
 
 def save_images(img_tensors: torch.Tensor, file_name: str, folder: str='output'):
-    fig, axs = plt.subplots(img_tensors.shape[0], figsize=(img_tensors.shape[0]//5, img_tensors.shape[0]))
+    fig, axs = plt.subplots(img_tensors.shape[0], figsize=(5, img_tensors.shape[0]))
     img_idx = 0
 
     if img_tensors.shape[0] == 1:

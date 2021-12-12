@@ -24,6 +24,7 @@ class CUT_gan(nn.Module):
             gan_l_type: The type of dgan loss to be used (either 'non-saturating', 'vanilla', or 'lsgan')
             bs: The batch size that is going to be used in training
         """
+        super().__init__()
         # keep relevant attirbutes for the training loop
         self.device = device
         self.lambda_gan = lambda_gan
@@ -43,12 +44,33 @@ class CUT_gan(nn.Module):
             self.dgan_loss = DGANLoss(gan_l_type).to(self.device)
             self.nce_losses = []
             for _ in nce_layers:
-                self.nce_losses.append(PatchNCELoss(nce_tau, bs)).to(self.device)
+                self.nce_losses.append(PatchNCELoss(nce_tau, bs).to(self.device))
 
             # create adam optimizers
             self.gen_optim = optim.Adam(self.gen.parameters(), lr=lr)
             self.disc_optim = optim.Adam(self.disc.parameters(), lr=lr)
             self.feat_net_optim = optim.Adam(self.feat_net.parameters(), lr=lr)
+    
+
+    def train(self):
+        """
+        Set all 3 networks to training mode
+        """
+        self.gen.train()
+        self.disc.train()
+        self.feat_net.train()
+    
+
+    def eval(self):
+        """
+        Depending on the mode, set the networks to eval mode
+        """
+        if self.train:
+            self.gen.eval()
+            self.disc.eval()
+            self.feat_net.eval()
+        else:
+            self.gen.eval()
         
 
     def forward(self, real_src, real_targ):
@@ -76,12 +98,12 @@ class CUT_gan(nn.Module):
             self.fake_src = fake[real_src.shape[0]:]
 
 
-    def optimize_params(self):
+    def optimize_params(self, real_src, real_targ):
         """
         Forward pass, loss, back propagate, and step for all 3 networks to optmize all the params
         """
         # forward pass
-        self.forward()
+        self.forward(real_src, real_targ)
 
         # discriminator param update
         set_requires_grad(self.disc, True)
@@ -152,6 +174,6 @@ class CUT_gan(nn.Module):
         # calculate the loss for each layer in the transformed returned features
         for src_feat, targ_feat, nce_loss in zip(transformed_src_feats, transformed_targ_feats, self.nce_losses):
             # TODO: Consider switching src_feats and targ_feats if training is not working well
-            total_loss += (nce_loss(src_feats, targ_feats) * self.lambda_nce).mean()
+            total_loss += (nce_loss(src_feat, targ_feat) * self.lambda_nce).mean()
         
         return total_loss/len(self.gen.nce_layers)
