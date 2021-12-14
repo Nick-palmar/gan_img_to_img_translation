@@ -9,7 +9,7 @@ import matplotlib
 import os
 
 class Data:
-    def __init__(self, source: str, target: str, flip: bool, bs: int, im_size: Tuple[int]):
+    def __init__(self, source: str, target: str, flip: bool, bs: int, im_size: Tuple[int], make_valid: bool = True):
         if not flip:
             self.source=source
             self.target=target
@@ -23,6 +23,10 @@ class Data:
         self.dlTargetTrain=None
         self.dlSourceTest=None
         self.dlTargetTest=None
+        # seems like it is not necessary to create validation set
+        # self.dlSourceValid=None
+        # self.dlTargetValid=None
+        # self.make_valid = make_valid
 
     def get_loaders(self, data_dir_name: str) -> List[DataLoader]:
         data_dir_path = os.path.join('data', data_dir_name)
@@ -115,3 +119,13 @@ def set_requires_grad(net, requires_grad):
     """
     for param in net.parameters():
         param.requires_grad = requires_grad
+
+
+def report_losses(losses, loss_names, time, scale=1):
+    """
+    Formats losses in a list
+    """
+    print()
+    for loss, name in zip(losses, loss_names):
+        print(f"{name}: {round(loss.item()/scale, 2)}", end=" | ")
+    print(f"Time: {round(time, 2)}s\n")

@@ -4,6 +4,7 @@ import torch.optim as optim
 from create_gen_discr import Generator, Disciminator, EncoderFeatureExtractor
 from losses import DGANLoss, PatchNCELoss
 from data_utility import set_requires_grad
+import os
 
 class CUT_gan(nn.Module):
     def __init__(self, lambda_gan, lambda_nce, nce_layers, device, lr, nce_idt=True, encoder_net_features=256, nce_tau=0.07, num_patches=256, train=True, gan_l_type='non-saturating', bs=1):
@@ -31,6 +32,7 @@ class CUT_gan(nn.Module):
         self.lambda_nce = lambda_nce
         self.nce_idt = nce_idt
         self.num_patches = num_patches
+        self.nce_layers = nce_layers
         # definte the generator for the CUT model to go from rgb -> rgb image
         self.gen = Generator(3, 3, nce_layers).to(self.device)
  
@@ -71,9 +73,29 @@ class CUT_gan(nn.Module):
             self.feat_net.eval()
         else:
             self.gen.eval()
-        
+    
+    def save_nets(self, epoch, folder='models'):
+        """
+        Save the network params on the cpu for all 3 networks
+        """
+        gen_checkpoint = {'state_dict': self.gen.cpu().state_dict()}
+        disc_checkpoint = {'state_dict': self.disc.cpu().state_dict()}
+        feat_checkpoint = {'state_dict': self.feat_net.cpu().state_dict()}
 
-    def forward(self, real_src, real_targ):
+        get_path = lambda model_name: os.path.join(folder, f"{epoch}_{model_name}.pth")
+        torch.save(gen_checkpoint, get_path('gen'))
+        torch.save(disc_checkpoint, get_path('disc'))
+        torch.save(feat_checkpoint, get_path('feat_net'))
+    
+    def load_gen(self, epoch, folder='models'):
+        checkpoint = torch.load(os.path.join(folder, f"{epoch}_gen.pth"), map_location=torch.device('cpu'))
+        gen = Generator(3, 3, self.nce_layers)
+        gen.load_state_dict(checkpoint['state_dict'])
+        # print(next(self.gen.parameters()))
+        return gen
+
+
+    def forward(self, real_src, real_targ=None):
         """
         Does a forward pass of the generator for training and inference.
 
@@ -83,7 +105,7 @@ class CUT_gan(nn.Module):
         # save the current real src and targ images to pass to other functions
         self.real_src = real_src
         self.real_targ = real_targ
-        if self.train and self.nce_idt:
+        if self.train and self.nce_idt and real_targ != None:
             # put the real source and target images if in training and using identity nce loss
             real = torch.cat((real_src, real_targ), dim=0)
         else:
@@ -94,7 +116,7 @@ class CUT_gan(nn.Module):
         # get fake target images (y hat)
         self.fake_targ = fake[:real_src.shape[0]]
         # if possible, get fake source images for identity loss (x tilde)
-        if self.train and self.nce_idt:
+        if self.train and self.nce_idt and real_targ != None:
             self.fake_src = fake[real_src.shape[0]:]
 
 
@@ -108,21 +130,20 @@ class CUT_gan(nn.Module):
         # discriminator param update
         set_requires_grad(self.disc, True)
         self.disc_optim.zero_grad()
-        loss_d = self.calc_d_loss()
-        loss_d.backward()
+        self.loss_d = self.calc_d_loss()
+        self.loss_d.backward()
         self.disc_optim.step()
 
         # generator and encoder feature extractor param update
         set_requires_grad(self.disc, False)
         self.gen_optim.zero_grad()
         self.feat_net_optim.zero_grad()
-        loss_g = self.calc_g_loss()
-        loss_g.backward()
+        self.loss_g = self.calc_g_loss()
+        self.loss_g.backward()
         self.gen_optim.step()
         self.feat_net_optim.step()
 
 
-    # TODO: ensure that keeping the loss as variables and not class attibutes does not affect back propagation
     def calc_d_loss(self):
         """
         Calculates discriminator loss
@@ -131,12 +152,12 @@ class CUT_gan(nn.Module):
         fake_targ = self.fake_targ.detach()
         # fake target loss
         fake_pred = self.disc(fake_targ)
-        fake_loss = self.dgan_loss(fake_pred, False)
+        self.fake_d_loss = self.dgan_loss(fake_pred, False)
         # real target loss
         real_pred = self.disc(self.real_targ)
-        real_loss = self.dgan_loss(real_pred, True)
+        self.real_d_loss = self.dgan_loss(real_pred, True)
         # combine both fake and real target loss
-        return (fake_loss + real_loss) * 0.5
+        return (self.fake_d_loss + self.real_d_loss) * 0.5
 
 
     def calc_g_loss(self):
@@ -145,16 +166,16 @@ class CUT_gan(nn.Module):
         """
         # check normal GAN loss on discriminator with fake generator images
         pred_fake = self.disc(self.fake_targ)
-        gan_loss = self.dgan_loss(pred_fake, False) * self.lambda_gan
+        self.gan_g_loss = self.dgan_loss(pred_fake, False) * self.lambda_gan
 
         # use patch NCE loss for src -> fake targ
-        nce_loss = self.calc_nce_loss(self.real_src, self.real_targ)
+        self.nce_loss = self.calc_nce_loss(self.real_src, self.real_targ)
         # use patch NCE loss for targ -> fake source (identity loss)
-        nce_identity_loss = self.calc_nce_loss(self.real_targ, self.fake_src)
+        self.nce_identity_loss = self.calc_nce_loss(self.real_targ, self.fake_src)
         # get total nce loss
-        nce_loss_total = (nce_loss + nce_identity_loss) * 0.5
+        nce_loss_total = (self.nce_loss + self.nce_identity_loss) * 0.5
         # get total loss (Lgan + NCE loss + identity NCE loss)
-        loss_total = nce_loss_total + gan_loss
+        loss_total = nce_loss_total + self.gan_g_loss
         return loss_total
 
 

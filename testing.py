@@ -3,6 +3,7 @@ from data_utility import set_requires_grad
 from create_gen_discr import Disciminator, Generator, EncoderFeatureExtractor
 from losses import DGANLoss
 from data_utility import Data
+from cut_model import CUT_gan
 
 bs = 1
 n_patches=64
@@ -92,6 +93,19 @@ def test_mat_mul():
     t_m_sum = (tens1*tens2).sum(dim=1)[:, :, None]
     t_bmm = torch.bmm(tens1.transpose(2, 1), tens2)
     print(t_mm.shape, t_m_sum.shape, t_bmm.shape)
+
+def test_load_gen():
+    lambda_gan = 1
+    lambda_nce = 1
+    nce_layers = [0, 2, 4, 5, 7, 9, 10]
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
+    print(f'Device: {device}')
+    lr = 2e-3 # use the lr as recommended by the paper
+    gan_l_type='non-saturating' # consider switching to lsgan as used in the paper
+    bs = 1
+    # define the CUT gan model which has all 3 nets and training loop for the 3 nets
+    cut_model = CUT_gan(lambda_gan, lambda_nce, nce_layers, device, lr, gan_l_type=gan_l_type, bs=bs)
+    gen = cut_model.load_gan(0)
 
 def main():
     # test_set_requires_grad()

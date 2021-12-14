@@ -272,16 +272,17 @@ class EncoderFeatureExtractor(nn.Module):
         super().__init__()
         self.norm = Normalize(2)
         # self.gpu = gpu
+        self.nce_layer_channels = nce_layer_channels
         self.n_features = n_features
         # create the mlp for each layer that will be used for nce (based on the channels)
-        self.mlps = nn.ModuleList(self._create_mlp(nce_layer_channels)) # define this as a module list for pytorch to treat each module in the list on it's own
+        self.mlps = nn.ModuleList(self._create_mlp()) # define this as a module list for pytorch to treat each module in the list on it's own
     
-    def _create_mlp(self, layer_channels):
+    def _create_mlp(self):
         """
         Create a two layer fully connected network for each of the layers with the corresponding channel sizes
         """
         mlps = []
-        for ch_in in layer_channels:
+        for ch_in in self.nce_layer_channels:
             mlps.append(nn.Sequential(*[
                 nn.Linear(ch_in, self.n_features), 
                 nn.ReLU(), 
