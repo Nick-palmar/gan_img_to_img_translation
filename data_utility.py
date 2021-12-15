@@ -65,13 +65,13 @@ def save_images(img_tensors: torch.Tensor, file_name: str, folder: str='output')
     img_idx = 0
 
     if img_tensors.shape[0] == 1:
-        axs.imshow(img_tensors[img_idx].permute(1, 2, 0).detach())
+        axs.imshow(img_tensors[img_idx].permute(1, 2, 0).detach().cpu())
         axs.set_xticks([])
         axs.set_yticks([])
     else:
         for ax in axs:
             # plt.axis('off')
-            ax.imshow(img_tensors[img_idx].permute(1, 2, 0).detach())
+            ax.imshow(img_tensors[img_idx].permute(1, 2, 0).detach().cpu())
             ax.set_xticks([])
             ax.set_yticks([])
             img_idx += 1
@@ -121,11 +121,11 @@ def set_requires_grad(net, requires_grad):
         param.requires_grad = requires_grad
 
 
-def report_losses(losses, loss_names, time, scale=1):
+def report_losses(losses, loss_names, epoch, time, scale=1):
     """
     Formats losses in a list
     """
-    print()
+    print(f'\nEpoch: {epoch}', end=" | ")
     for loss, name in zip(losses, loss_names):
-        print(f"{name}: {round(loss.item()/scale, 2)}", end=" | ")
+        print(f"{name}: {round(loss/scale, 2)}", end=" | ")
     print(f"Time: {round(time, 2)}s\n")

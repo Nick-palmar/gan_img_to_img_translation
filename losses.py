@@ -6,9 +6,10 @@ class DGANLoss(nn.Module):
     """
     Defines the GAN loss function for the discriminator's predictions of real or fake on data
     """
-    def __init__(self, mode):
+    def __init__(self, mode, device):
         super().__init__()
         self.mode = mode
+        self.device=device
 
         # define the loss to be used when receiving a grid of activaitons (predictions) for an image
         if self.mode == 'lsgan':
@@ -22,9 +23,9 @@ class DGANLoss(nn.Module):
     
     def create_targ_tensor(self, inp, is_real):
         if is_real:
-            targ_tensor = torch.Tensor([1])
+            targ_tensor = torch.Tensor([1]).to(self.device)
         else:
-            targ_tensor = torch.Tensor([0])
+            targ_tensor = torch.Tensor([0]).to(self.device)
         # returns the target tensor in the same shape as the input (since it will be a grid of activations from the discriminator)
         return targ_tensor.expand_as(inp)
         
@@ -76,7 +77,7 @@ class PatchNCELoss(nn.Module):
         # create the negative feature results by doing (n_patches, n_transformed_space) * (n_transformed_space, n_patches) = (n_patches, n_patches)
         l_neg_batch = torch.bmm(real_feats, fake_feats.transpose(2, 1))
         # remove meaningless diagonal entries by masking the l_neg_batch with an identity matrix
-        diag = torch.eye(n_patches, device=real_feats.device)
+        diag = torch.eye(n_patches, device=real_feats.device).bool()
         l_neg_batch.masked_fill_(diag, -10.0)
         l_neg = l_neg_batch.view(n_patches, -1) # NOTICE: this line is different from the paper
 

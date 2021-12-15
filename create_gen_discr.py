@@ -24,7 +24,7 @@ class Normalize(nn.Module):
         out = x.div(norm + 1e-7)
         return out
 
-def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='batch', transpose=False, leaky=False):
+def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='instance', transpose=False, leaky=False):
     """
     Layer to perform a single convolution, normalization (batch or instance) and activation function (relu and leaky relu)
     """
@@ -50,9 +50,9 @@ def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='b
     layers.append(norm_layer)
     # check if this layer should have an activation - yes unless the final layer
     if act and not leaky:
-        layers.append(nn.ReLU())
+        layers.append(nn.ReLU(inplace=True))
     elif act and leaky:
-        layers.append(nn.LeakyReLU(0.2))
+        layers.append(nn.LeakyReLU(0.2, inplace=True))
     
     layers = nn.Sequential(*layers)
     return layers
@@ -67,9 +67,9 @@ class ResBlock(nn.Module):
         self.pool = self._return if stride==1 else nn.AvgPool2d(stride, ceil_mode=True)
         self.id_conv = self._return if ch_in == ch_out else _single_conv(ch_in, ch_out, 1, stride=1, act=False)
         if leaky:
-            self.relu = nn.LeakyReLU(0.2)
+            self.relu = nn.LeakyReLU(0.2, inplace=True)
         else:
-            self.relu = nn.ReLU()
+            self.relu = nn.ReLU(inplace=True)
     
     def _return(self, x):
         return x
@@ -285,7 +285,7 @@ class EncoderFeatureExtractor(nn.Module):
         for ch_in in self.nce_layer_channels:
             mlps.append(nn.Sequential(*[
                 nn.Linear(ch_in, self.n_features), 
-                nn.ReLU(), 
+                nn.ReLU(inplace=True), 
                 nn.Linear(self.n_features, self.n_features)
                 ]))
         return mlps

@@ -43,7 +43,7 @@ class CUT_gan(nn.Module):
             self.feat_net = EncoderFeatureExtractor(self.gen.feature_extractor_channels, n_features=encoder_net_features).to(self.device)
 
             # define loss functions
-            self.dgan_loss = DGANLoss(gan_l_type).to(self.device)
+            self.dgan_loss = DGANLoss(gan_l_type, self.device).to(self.device)
             self.nce_losses = []
             for _ in nce_layers:
                 self.nce_losses.append(PatchNCELoss(nce_tau, bs).to(self.device))
@@ -81,6 +81,11 @@ class CUT_gan(nn.Module):
         gen_checkpoint = {'state_dict': self.gen.cpu().state_dict()}
         disc_checkpoint = {'state_dict': self.disc.cpu().state_dict()}
         feat_checkpoint = {'state_dict': self.feat_net.cpu().state_dict()}
+        
+        # move the nets back to the current device
+        self.gen.to(self.device)
+        self.disc.to(self.device)
+        self.feat_net.to(self.device)
 
         get_path = lambda model_name: os.path.join(folder, f"{epoch}_{model_name}.pth")
         torch.save(gen_checkpoint, get_path('gen'))
@@ -195,6 +200,6 @@ class CUT_gan(nn.Module):
         # calculate the loss for each layer in the transformed returned features
         for src_feat, targ_feat, nce_loss in zip(transformed_src_feats, transformed_targ_feats, self.nce_losses):
             # TODO: Consider switching src_feats and targ_feats if training is not working well
-            total_loss += (nce_loss(src_feat, targ_feat) * self.lambda_nce).mean()
+            total_loss += (nce_loss(targ_feat, src_feat) * self.lambda_nce).mean()
         
         return total_loss/len(self.gen.nce_layers)
