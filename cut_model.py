@@ -27,6 +27,7 @@ class CUT_gan(nn.Module):
         """
         super().__init__()
         # keep relevant attirbutes for the training loop
+        self.train = train
         self.device = device
         self.lambda_gan = lambda_gan
         self.lambda_nce = lambda_nce
@@ -50,11 +51,12 @@ class CUT_gan(nn.Module):
 
             # create adam optimizers
             self.gen_optim = optim.Adam(self.gen.parameters(), lr=lr)
-            self.disc_optim = optim.Adam(self.disc.parameters(), lr=lr)
+            # higher discriminator lr
+            self.disc_optim = optim.Adam(self.disc.parameters(), lr=1e-2)
             self.feat_net_optim = optim.Adam(self.feat_net.parameters(), lr=lr)
     
 
-    def train(self):
+    def set_train(self):
         """
         Set all 3 networks to training mode
         """
@@ -63,7 +65,7 @@ class CUT_gan(nn.Module):
         self.feat_net.train()
     
 
-    def eval(self):
+    def set_eval(self):
         """
         Depending on the mode, set the networks to eval mode
         """
@@ -86,6 +88,8 @@ class CUT_gan(nn.Module):
         self.gen.to(self.device)
         self.disc.to(self.device)
         self.feat_net.to(self.device)
+
+        os.makedirs(folder, exist_ok=True)
 
         get_path = lambda model_name: os.path.join(folder, f"{epoch}_{model_name}.pth")
         torch.save(gen_checkpoint, get_path('gen'))
@@ -125,7 +129,7 @@ class CUT_gan(nn.Module):
             self.fake_src = fake[real_src.shape[0]:]
 
 
-    def optimize_params(self, real_src, real_targ):
+    def optimize_params(self, real_src, real_targ, discr_loop=1):
         """
         Forward pass, loss, back propagate, and step for all 3 networks to optmize all the params
         """
@@ -133,11 +137,14 @@ class CUT_gan(nn.Module):
         self.forward(real_src, real_targ)
 
         # discriminator param update
-        set_requires_grad(self.disc, True)
-        self.disc_optim.zero_grad()
-        self.loss_d = self.calc_d_loss()
-        self.loss_d.backward()
-        self.disc_optim.step()
+        for _ in range(discr_loop):
+            set_requires_grad(self.disc, True)
+            self.disc_optim.zero_grad()
+            self.loss_d = self.calc_d_loss()
+            self.loss_d.backward()
+            self.disc_optim.step()
+            for i, param in enumerate(self.disc.parameters()):
+                print(i, param.grad.abs().mean().item())
 
         # generator and encoder feature extractor param update
         set_requires_grad(self.disc, False)
@@ -174,7 +181,7 @@ class CUT_gan(nn.Module):
         self.gan_g_loss = self.dgan_loss(pred_fake, False) * self.lambda_gan
 
         # use patch NCE loss for src -> fake targ
-        self.nce_loss = self.calc_nce_loss(self.real_src, self.real_targ)
+        self.nce_loss = self.calc_nce_loss(self.real_src, self.fake_targ)
         # use patch NCE loss for targ -> fake source (identity loss)
         self.nce_identity_loss = self.calc_nce_loss(self.real_targ, self.fake_src)
         # get total nce loss

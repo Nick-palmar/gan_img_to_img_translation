@@ -23,9 +23,10 @@ class DGANLoss(nn.Module):
     
     def create_targ_tensor(self, inp, is_real):
         if is_real:
-            targ_tensor = torch.Tensor([1]).to(self.device)
+            # apply some label smoothing for better generalization
+            targ_tensor = torch.Tensor([0.91]).to(self.device)
         else:
-            targ_tensor = torch.Tensor([0]).to(self.device)
+            targ_tensor = torch.Tensor([0.01]).to(self.device)
         # returns the target tensor in the same shape as the input (since it will be a grid of activations from the discriminator)
         return targ_tensor.expand_as(inp)
         
@@ -87,5 +88,3 @@ class PatchNCELoss(nn.Module):
         targs = torch.zeros(out.shape[0], device=real_feats.device).long()
         loss = self.loss(out, targs)
         return loss
-
-

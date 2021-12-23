@@ -201,20 +201,21 @@ class Generator(nn.Module):
             for layer_id, layer in enumerate(self.encoder):
                 # compute the output for the layer
                 x = layer(x)
+                # print('gen shapes', x.shape, layer_id)
                 # only add the layer activation map to the output if in the list of layers (this will be used as one of the layers by PatchNCELoss)
                 if layer_id in layers:
                     encoder_layer_outs.append(x)
+                    # print('gen shapes', x.shape[2:])
+            # raise Exception('done gen fwd test')
             return encoder_layer_outs
 
         # first apply encoder - only reaches this part if layers is empty
         enc_x = self.encoder(x)
         # print(enc_x.shape)
-        # return only encoder results for patchNCELoss
-        if encode_only:
-            return enc_x
-        
         # second apply decoder
         dec_x = self.decoder(enc_x)
+        # print(x.shape, dec_x.shape)
+        # raise Exception('done test')
         return dec_x
 
 
@@ -222,11 +223,12 @@ class Disciminator(nn.Module):
     """
     Create a discriminator model to tell the difference between real and fake images (assumes 128*128 input images)
     """
-    def __init__(self, ch_in, base_ch=64, n_layers=3):
+    def __init__(self, ch_in, base_ch=64, n_layers=3, n_downsamples=3):
         super().__init__()
         self.ch_in = ch_in
         self.base_ch = base_ch
         self.n_layers = n_layers
+        self.n_downsamples = n_downsamples
         self.convs = self._create_conv_discriminator()
     
     def _create_conv_discriminator(self):
@@ -242,11 +244,17 @@ class Disciminator(nn.Module):
             # set the multiplier to a max of 8 or 2**current layer
             ch_mult = min(2**i, 8)
             convs += [
-                ResBlock(self.base_ch * ch_mult_prev, self.base_ch * ch_mult, stride=2, leaky=True)
+                ResBlock(self.base_ch * ch_mult_prev, self.base_ch * ch_mult, stride=2 if i < self.n_downsamples else 1, leaky=True)
             ]
         
+        curr_ch = self.base_ch * ch_mult
+        for j in range(self.n_layers):
+          convs += [
+                ResBlock(curr_ch, curr_ch//2, leaky=True)
+            ]
+          curr_ch = curr_ch//2
         # output a single channel feature map of activations from the discriminator (from the Patch GAN paper)
-        convs += [_single_conv(self.base_ch * ch_mult, 1, 3, leaky=True)]
+        convs += [_single_conv(curr_ch, 1, 3, leaky=True)]
         return nn.Sequential(*convs)
     
     def forward(self, x):
@@ -320,6 +328,7 @@ class EncoderFeatureExtractor(nn.Module):
                 else:
                     # get random permutation of all indices from 0 to max img loc (axis=1)
                     patch_id = rng.permutation(feat_reshaped.shape[1])
+                    # print(num_patches, len(patch_id))
                     # index the patch_id to extract first num_patch locations 
                     if num_patches < len(patch_id):
                         patch_id = patch_id[:num_patches]
@@ -347,6 +356,3 @@ class EncoderFeatureExtractor(nn.Module):
             return_feats.append(feat_norm)
         
         return return_feats, return_ids
-
-        
-    

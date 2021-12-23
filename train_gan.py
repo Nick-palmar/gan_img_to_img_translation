@@ -7,28 +7,30 @@ from tqdm import tqdm
 # define the params to pass to the cut gan model
 lambda_gan = 1
 lambda_nce = 1
-nce_layers = [0, 2, 4, 5, 7, 9, 10]
+nce_layers = [0, 2, 4, 6, 8, 10]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
-enc_net_feats = 128
-num_patches = 128
+enc_net_feats = 256
+num_patches = 256
 print(f'Device: {device}')
 lr = 2e-3 # use the lr as recommended by the paper
-gan_l_type='non-saturating' # consider switching to lsgan as used in the paper
+gan_l_type='lsgan' # consider switching to lsgan as used in the paper
 bs = 1
 
 save_every = 100 # save generator image every x images in a batch
 # define the number of epochs for training
-epochs = 100
+epochs = 30
 loss_names = ['DLoss', 'FakeDLoss', 'RealDLoss', 'GLoss', 'GANGLoss', 'NCELoss', 'NCEIdentityLoss']
 
 def main():
-    data = Data('apples', 'oranges', False, bs, (128, 128))
+    data = Data('apples', 'oranges', True, bs, (128, 128))
     data.get_loaders('apples_and_oranges')
     # show_batch(data, 9)
 
     # define the CUT gan model which has all 3 nets and training loop for the 3 nets
     cut_model = CUT_gan(lambda_gan, lambda_nce, nce_layers, device, lr, gan_l_type=gan_l_type, bs=bs, num_patches=num_patches, encoder_net_features=enc_net_feats)
     # print(next(cut_model.gen.parameters()).device)
+    # print(cut_model.gen.feature_extractor_channels)
+    # raise Exception('done')
 
     for epoch in range(epochs):
         # discriminator losses
@@ -42,15 +44,15 @@ def main():
         nce_identity_loss = 0
         start_ep = time.time()
         x_check = []
+        # set model to train
+        cut_model.set_train()
         with tqdm(total=len(data.dlSourceTrain)) as pbar:
             for i, ((x, _), (y, _)) in enumerate(zip(data.dlSourceTrain, data.dlTargetTrain)):
-                # set model to train
-                cut_model.train()
                 # move the image tensors onto the correct device
                 x = x.to(device)
                 y = y.to(device)
                 # train model
-                cut_model.optimize_params(x, y)
+                cut_model.optimize_params(x, y, discr_loop=10)
                 # update losses
                 # with torch.no_grad():
                 loss_d += cut_model.loss_d.item()
@@ -65,7 +67,7 @@ def main():
                     x_check.append(x)
                 # update progress
                 pbar.update(bs)
-                # if i == 500:
+                # if i == 20:
                 #     break
     
 
@@ -76,7 +78,7 @@ def main():
         loss_list = [loss_d, fake_d_loss, real_d_loss, loss_g, gan_g_loss, nce_loss, nce_identity_loss]
         report_losses(loss_list, loss_names, epoch, ep_time, i+1)
         # output visuals
-        cut_model.eval()
+        cut_model.set_eval()
         x_check = torch.cat(x_check, dim=0)
         # print(x_check.device)
         # print(next(cut_model.gen.parameters()).device)
