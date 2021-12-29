@@ -40,14 +40,16 @@ def _single_conv(ch_in, ch_out, ks, stride=1, act=True, gammaZero=False, norm='i
         norm_layer = nn.InstanceNorm2d(ch_out, affine=False, track_running_stats=False)
     elif norm=='batch':
         norm_layer = nn.BatchNorm2d(ch_out, affine=True, track_running_stats=True)
+    elif norm=='none' or norm==None:
+        pass
     else:
         raise Exception(f'Norm should be either "instance" or "batch" but {norm} was passed')
-
     if gammaZero and norm_layer=='batch':
         # init batch norm gamma param to zero to speed up training 
         nn.init.zeros_(norm_layer.weight.data)
+    if norm!='none' and norm!=None:
+        layers.append(norm_layer)
 
-    layers.append(norm_layer)
     # check if this layer should have an activation - yes unless the final layer
     if act and not leaky:
         layers.append(nn.ReLU(inplace=True))
@@ -217,21 +219,24 @@ class Generator(nn.Module):
         dec_x = self.decoder(enc_x)
         return dec_x
 
-
 class Disciminator(nn.Module):
     """
     Create a discriminator model to tell the difference between real and fake images (assumes 128*128 input images)
     """
-    def __init__(self, ch_in, base_ch=64, n_layers=3):
+    def __init__(self, ch_in, simpleMode, base_ch=64, n_layers=3, ks=4):
         super().__init__()
         self.ch_in = ch_in
         self.base_ch = base_ch
         self.n_layers = n_layers
-        self.convs = self._create_conv_discriminator()
+        self.ks = ks
+        if not simpleMode:
+            self.convs = self._create_conv_discriminator()
+        else:
+            self.convs = self._create_simple_conv_discriminator()
     
     def _create_conv_discriminator(self):
         # start with a 1x1 conv assuming  a 128*128 input image; convert to base_ch channels
-        convs = [_single_conv(self.ch_in, self.base_ch, 1, stride=2, leaky=True)]
+        convs = [_single_conv(self.ch_in, self.base_ch, 1, stride=2, norm='none', leaky=True)]
 
         # add multiple res blocks to reduce the 128*128 input
         ch_mult_prev = 1
@@ -247,6 +252,30 @@ class Disciminator(nn.Module):
         
         # output a single channel feature map of activations from the discriminator (from the Patch GAN paper)
         convs += [_single_conv(self.base_ch * ch_mult, 1, 3, leaky=True)]
+        return nn.Sequential(*convs)
+    
+
+    def _create_simple_conv_discriminator(self):
+        # start with a 1x1 conv assuming  a 128*128 input image; convert to base_ch channels
+        convs = [_single_conv(self.ch_in, self.base_ch, self.ks, stride=2, norm='none', leaky=True)]
+
+        # add multiple res blocks to reduce the 128*128 input
+        ch_mult_prev = 1
+        ch_mult = 1
+        # first layer was alreday applied above; apply all others
+        for i in range(1, self.n_layers):
+            ch_mult_prev = ch_mult
+            # set the multiplier to a max of 8 or 2**current layer
+            ch_mult = min(2**i, 8)
+            convs += [
+                _single_conv(self.base_ch * ch_mult_prev, self.base_ch * ch_mult, self.ks, stride=2, leaky=True)
+            ]
+        
+        ch_mult_prev = ch_mult 
+        ch_mult =  min(2**self.n_layers, 8)
+        convs += [_single_conv(self.base_ch * ch_mult_prev, self.base_ch * ch_mult, self.ks, stride=1, leaky=True)]
+        # output a single channel feature map of activations from the discriminator (from the Patch GAN paper)
+        convs += [nn.Conv2d(self.base_ch * ch_mult, 1, self.ks)]
         return nn.Sequential(*convs)
     
     def forward(self, x):

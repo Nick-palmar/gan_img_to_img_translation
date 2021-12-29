@@ -13,7 +13,7 @@ enc_net_feats = 128
 num_patches = 128
 print(f'Device: {device}')
 lr = 2e-3 # use the lr as recommended by the paper
-gan_l_type='non-saturating' # consider switching to lsgan as used in the paper
+gan_l_type='lsgan' # consider switching to lsgan as used in the paper
 bs = 1
 
 save_every = 100 # save generator image every x images in a batch
@@ -50,7 +50,7 @@ def main():
                 x = x.to(device)
                 y = y.to(device)
                 # train model
-                cut_model.optimize_params(x, y)
+                cut_model.optimize_params(x, y, discriminator_train=10)
                 # update losses
                 # with torch.no_grad():
                 loss_d += cut_model.loss_d.item()

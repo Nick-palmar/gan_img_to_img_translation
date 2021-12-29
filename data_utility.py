@@ -77,6 +77,7 @@ def save_images(img_tensors: torch.Tensor, file_name: str, folder: str='output')
             img_idx += 1
     
     # save the figure results
+    os.makedirs(folder, exist_ok=True)
     plt.savefig(os.path.join(folder, file_name))
 
 def show_batch(data: Data, n: int, folder: str='output') -> matplotlib.image.AxesImage:
@@ -89,7 +90,7 @@ def show_batch(data: Data, n: int, folder: str='output') -> matplotlib.image.Axe
     if sqrt_num_res - int(sqrt_num_res) != 0:
         raise Exception('Num res should be a perfect square (eg. 1, 4, 9, 16, 25, 36...)')
     sqrt_num_res = int(sqrt_num_res)
-    
+    os.makedirs(folder, exist_ok=True)
 
     for i, loader in enumerate([data.dlSourceTrain, data.dlTargetTrain]):
         for x, _ in loader:

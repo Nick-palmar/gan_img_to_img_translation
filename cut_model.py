@@ -38,7 +38,7 @@ class CUT_gan(nn.Module):
  
         if train:
             # define a discriminator to take 3 input channels with 4 residual blocks
-            self.disc = Disciminator(3, n_layers=4).to(self.device)
+            self.disc = Disciminator(3, True).to(self.device)
             # define a feature extractor network H sub l to transform generator encoder features to a new embedding space for nce loss
             self.feat_net = EncoderFeatureExtractor(self.gen.feature_extractor_channels, n_features=encoder_net_features).to(self.device)
 
@@ -87,6 +87,8 @@ class CUT_gan(nn.Module):
         self.disc.to(self.device)
         self.feat_net.to(self.device)
 
+        os.makedirs(folder, exist_ok=True)
+
         get_path = lambda model_name: os.path.join(folder, f"{epoch}_{model_name}.pth")
         torch.save(gen_checkpoint, get_path('gen'))
         torch.save(disc_checkpoint, get_path('disc'))
@@ -125,7 +127,7 @@ class CUT_gan(nn.Module):
             self.fake_src = fake[real_src.shape[0]:]
 
 
-    def optimize_params(self, real_src, real_targ):
+    def optimize_params(self, real_src, real_targ, discriminator_train=1):
         """
         Forward pass, loss, back propagate, and step for all 3 networks to optmize all the params
         """
@@ -133,11 +135,12 @@ class CUT_gan(nn.Module):
         self.forward(real_src, real_targ)
 
         # discriminator param update
-        set_requires_grad(self.disc, True)
-        self.disc_optim.zero_grad()
-        self.loss_d = self.calc_d_loss()
-        self.loss_d.backward()
-        self.disc_optim.step()
+        for _ in range(discriminator_train):
+            set_requires_grad(self.disc, True)
+            self.disc_optim.zero_grad()
+            self.loss_d = self.calc_d_loss()
+            self.loss_d.backward()
+            self.disc_optim.step()
 
         # generator and encoder feature extractor param update
         set_requires_grad(self.disc, False)
@@ -157,10 +160,10 @@ class CUT_gan(nn.Module):
         fake_targ = self.fake_targ.detach()
         # fake target loss
         fake_pred = self.disc(fake_targ)
-        self.fake_d_loss = self.dgan_loss(fake_pred, False)
+        self.fake_d_loss = self.dgan_loss(fake_pred, False).mean()
         # real target loss
         real_pred = self.disc(self.real_targ)
-        self.real_d_loss = self.dgan_loss(real_pred, True)
+        self.real_d_loss = self.dgan_loss(real_pred, True).mean()
         # combine both fake and real target loss
         return (self.fake_d_loss + self.real_d_loss) * 0.5
 
@@ -171,7 +174,8 @@ class CUT_gan(nn.Module):
         """
         # check normal GAN loss on discriminator with fake generator images
         pred_fake = self.disc(self.fake_targ)
-        self.gan_g_loss = self.dgan_loss(pred_fake, False) * self.lambda_gan
+        # maxmize generator to produce real looking images; want pred fake to be as close to the real class as possible
+        self.gan_g_loss = self.dgan_loss(pred_fake, True).mean() * self.lambda_gan
 
         # use patch NCE loss for src -> fake targ
         self.nce_loss = self.calc_nce_loss(self.real_src, self.real_targ)
