@@ -33,6 +33,7 @@ class CUT_gan(nn.Module):
         self.nce_idt = nce_idt
         self.num_patches = num_patches
         self.nce_layers = nce_layers
+        self.is_train = train
         # definte the generator for the CUT model to go from rgb -> rgb image
         self.gen = Generator(3, 3, nce_layers).to(self.device)
  
@@ -67,7 +68,7 @@ class CUT_gan(nn.Module):
         """
         Depending on the mode, set the networks to eval mode
         """
-        if self.train:
+        if self.is_train:
             self.gen.eval()
             self.disc.eval()
             self.feat_net.eval()
@@ -112,7 +113,7 @@ class CUT_gan(nn.Module):
         # save the current real src and targ images to pass to other functions
         self.real_src = real_src
         self.real_targ = real_targ
-        if self.train and self.nce_idt and real_targ != None:
+        if self.is_train and self.nce_idt and real_targ != None:
             # put the real source and target images if in training and using identity nce loss
             real = torch.cat((real_src, real_targ), dim=0)
         else:
@@ -123,7 +124,7 @@ class CUT_gan(nn.Module):
         # get fake target images (y hat)
         self.fake_targ = fake[:real_src.shape[0]]
         # if possible, get fake source images for identity loss (x tilde)
-        if self.train and self.nce_idt and real_targ != None:
+        if self.is_train and self.nce_idt and real_targ != None:
             self.fake_src = fake[real_src.shape[0]:]
 
 
@@ -178,7 +179,7 @@ class CUT_gan(nn.Module):
         self.gan_g_loss = self.dgan_loss(pred_fake, True).mean() * self.lambda_gan
 
         # use patch NCE loss for src -> fake targ
-        self.nce_loss = self.calc_nce_loss(self.real_src, self.real_targ)
+        self.nce_loss = self.calc_nce_loss(self.real_src, self.fake_targ)
         # use patch NCE loss for targ -> fake source (identity loss)
         self.nce_identity_loss = self.calc_nce_loss(self.real_targ, self.fake_src)
         # get total nce loss

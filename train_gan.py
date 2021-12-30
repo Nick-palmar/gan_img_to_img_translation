@@ -9,7 +9,7 @@ lambda_gan = 1
 lambda_nce = 1
 nce_layers = [0, 2, 4, 5, 7, 9, 10]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
-enc_net_feats = 128
+enc_net_feats = 32
 num_patches = 128
 print(f'Device: {device}')
 lr = 2e-3 # use the lr as recommended by the paper
@@ -50,7 +50,7 @@ def main():
                 x = x.to(device)
                 y = y.to(device)
                 # train model
-                cut_model.optimize_params(x, y, discriminator_train=10)
+                cut_model.optimize_params(x, y, discriminator_train=1)
                 # update losses
                 # with torch.no_grad():
                 loss_d += cut_model.loss_d.item()
@@ -65,10 +65,7 @@ def main():
                     x_check.append(x)
                 # update progress
                 pbar.update(bs)
-                # if i == 500:
-                #     break
     
-
         # print(torch.cuda.memory_summary(device=None, abbreviated=False))
         ep_time = time.time() - start_ep
         cut_model.save_nets(epoch) # save all 3 networks
@@ -78,9 +75,6 @@ def main():
         # output visuals
         cut_model.eval()
         x_check = torch.cat(x_check, dim=0)
-        # print(x_check.device)
-        # print(next(cut_model.gen.parameters()).device)
-        # raise Exception('done')
         cut_model(x_check)
         x_fake = cut_model.fake_targ
         # put the images together to save them

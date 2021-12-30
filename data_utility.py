@@ -7,6 +7,7 @@ from typing import Tuple, List
 import matplotlib.pyplot as plt
 import matplotlib
 import os
+import random
 
 class Data:
     def __init__(self, source: str, target: str, flip: bool, bs: int, im_size: Tuple[int], make_valid: bool = True):
@@ -59,6 +60,45 @@ def create_dataloader(root: str, im_size: Tuple, bs: int) -> DataLoader:
     )
     dataloader = DataLoader(dataset, batch_size=bs, shuffle=True)
     return dataloader
+
+
+class ImagePool():
+    """
+    Image buffer class for cycle GAN
+    """
+    def __init__(self, pool_size):
+        self.ps = pool_size
+        self.n_imgs = 0
+        self.images = []
+    
+    def query(self, images):
+        """
+        Return images from buffer; 50% that returned images come from images in input and 50% chance that they come from the buffer
+        """
+        ret_imgs = []
+        for img in images:
+            # remove axis with size of image (1)
+            img = torch.unsqueeze(img.data, 0)
+            
+            # add image to buffer and return if not full
+            if len(self.images) < self.ps:
+                self.images.append(img)
+                ret_imgs.append(img)
+            else:
+                random_prob = random.uniform(0, 1)
+                # by 50% chance, return and object from the buffer, insert the new one
+                if random_prob < 0.5:
+                    rand_id = random.randint(0, self.ps-1)
+                    # create a deep copy to not overwrite the value
+                    ret_img = self.images[rand_id].clone()
+                    self.images[rand_id] = img
+                    ret_imgs.append(ret_img)
+                # by 50% chance, just return the image
+                else:
+                    ret_imgs.append(img)
+            # return a tensor of the selected images
+            return torch.cat(ret_imgs, 0)
+
 
 def save_images(img_tensors: torch.Tensor, file_name: str, folder: str='output'):
     fig, axs = plt.subplots(img_tensors.shape[0], figsize=(5, img_tensors.shape[0]))
