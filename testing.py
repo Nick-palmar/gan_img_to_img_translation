@@ -3,7 +3,7 @@ from data_utility import set_requires_grad
 from create_gen_discr import Disciminator, Generator, EncoderFeatureExtractor
 from losses import DGANLoss
 from data_utility import Data
-from cut_model import CUT_gan
+from cut_model import CUTGan
 
 bs = 1
 n_patches=64
@@ -104,7 +104,7 @@ def test_load_gen():
     gan_l_type='non-saturating' # consider switching to lsgan as used in the paper
     bs = 1
     # define the CUT gan model which has all 3 nets and training loop for the 3 nets
-    cut_model = CUT_gan(lambda_gan, lambda_nce, nce_layers, device, lr, gan_l_type=gan_l_type, bs=bs)
+    cut_model = CUTGan(lambda_gan, lambda_nce, nce_layers, device, lr, gan_l_type=gan_l_type, bs=bs)
     gen = cut_model.load_gan(0)
 
 def main():

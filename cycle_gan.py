@@ -8,10 +8,15 @@ import os
 import torch
 
 class CycleGan:
-    def __init__(self, device, lr, train=True, gan_l_type='lsgan', pool_size=50):
+    def __init__(self, device, lr, train=True, gan_l_type='lsgan', pool_size=50, lambda_src=10, lambda_targ=10, lambda_identity=0.5):
         self.device = device
         self.lr = lr
         self.is_train = train
+
+        # set lambda scaling factors
+        self.lambda_src = lambda_src
+        self.lambda_targ = lambda_targ
+        self.lambda_identity = lambda_identity
 
         # define the two generator networks
         self.gen_src_targ = Generator(3, 3, []).to(self.device)
@@ -81,7 +86,7 @@ class CycleGan:
         return gen
 
 
-    def forward(self, real_src, real_targ):
+    def forward(self, real_src, real_targ=None):
         """
         Does a forward pass of the generator for training and inference.
         Note that in this implementation both real source and real target images are expected
@@ -93,8 +98,9 @@ class CycleGan:
         self.fake_targ = self.gen_src_targ(self.real_src)
         self.src_reconstruct = self.gen_targ_src(self.fake_targ)
         # for the identity loss, use the generator on real target images, and then reconsturct that image
-        self.fake_src = self.gen_targ_src(self.real_targ)
-        self.targ_reconstruct = self.gen_src_targ(self.fake_src)
+        if self.real_targ != None:
+            self.fake_src = self.gen_targ_src(self.real_targ)
+            self.targ_reconstruct = self.gen_src_targ(self.fake_src)
         
     
     def optimize_params(self, real_src, real_targ, discriminator_train=1, gen_train=1):
@@ -116,25 +122,81 @@ class CycleGan:
             set_requires_grad(self.disc_targ, True)
             set_requires_grad(self.disc_src, True)
             self.disc_optim.zero_grad()
-            self.disc_targ_loss = self.calc_d_loss(self.disc_targ, self.real_targ, self.fake_targ)
-            self.disc_src_loss = self.calc_d_loss(self.disc_src, self.real_src, self.fake_src)
+            self.disc_targ_loss = self.calc_d_loss(self.disc_targ, self.real_targ, self.fake_targ, self.fake_targ_pool)
+            self.disc_src_loss = self.calc_d_loss(self.disc_src, self.real_src, self.fake_src, self.fake_src_pool)
             self.disc_targ_loss.backward()
             self.disc_src_loss.backward()
             self.disc_optim.step()
-            
 
 
-    def calc_d_loss(self, disc, real, fake):
+    def calc_d_loss(self, disc, real, fake, fake_pool):
         """
         Calculates discriminator loss
         """
-        pass
+        queried_fake = fake_pool.query(fake)
+        # real image discriminator GAN loss
+        d_pred_real = disc(real)
+        real_d_loss = self.gan_loss(d_pred_real, True)
+        # fake image disciminator GAN loss
+        d_pred_fake = disc(queried_fake.detach())
+        fake_d_loss = self.gan_loss(d_pred_fake, False)
+        return (real_d_loss + fake_d_loss) * 0.5
 
 
     def calc_g_loss(self):
         """
-        Calculates generator loss
+        Calculates generator loss (identity, GAN discriminator, and cycle loss)
         """
-        pass
+        # calculate the identity loss
+        if self.lambda_identity > 0:
+            # assume x -G-> y and y -F-> x
+            # take identity loss || G(y) - y||
+            identity_targ = self.gen_src_targ(self.real_targ)
+            self.loss_idt_targ = self.identity_loss(identity_targ, self.real_targ) * self.lambda_targ * self.lambda_identity
+            # take identity loss || G(x) - x||
+            identity_src = self.gen_targ_src(self.real_src)
+            self.loss_idt_src = self.identity_loss(identity_src, self.real_src) * self.lambda_src * self.lambda_identity
+        else:
+            self.loss_idt_targ = 0
+            self.loss_idt_src = 0
+        
+        # take the discriminator loss for fake target images to make them look real (loss of target domain discriminator on fake target images to look 'real'; GANLoss(D_Y(G(X)), Make these look real))
+        self.loss_gan_src_targ = self.gan_loss(self.disc_targ(self.fake_targ), True)
+        # discriminator loss for fake soruce images to make them look real. GANLoss(D_X(F(Y)), Make these look real)
+        self.loss_gan_targ_src = self.gan_loss(self.disc_src(self.fake_src), True)
+        # get the forward cycle loss as || F(G(x)) - x|| where x -G-> y and y -F-> x
+        self.fwd_cycle = self.cycle_loss(self.src_reconstruct, self.real_src) * self.lambda_src
+        # get the backward cycle loss as || G(F(y)) - y|| where x -G-> y and y -F-> x
+        self.bwd_cycle = self.cycle_loss(self.targ_reconstruct, self.real_targ) * self.lambda_targ
+        # return the combined loss
+        return self.loss_gan_src_targ + self.loss_gan_targ_src + self.fwd_cycle + self.bwd_cycle + self.loss_idt_src + self.loss_idt_targ
+
+
+    def get_losses(self):
+        self.new_losses = [
+            self.g_loss.item(), 
+            self.loss_gan_src_targ.item(),
+            self.loss_gan_targ_src.item(),
+            self.fwd_cycle.item(),
+            self.bwd_cycle.item(),
+            self.loss_idt_src.item(),
+            self.loss_idt_targ.item(),
+            self.disc_targ_loss.item(),
+            self.disc_src_loss.item(),
+        ]    
+        return self.new_losses
+    
+    
+    def update_losses(self, loss_list):
+        # update the loss list through pass by reference
+        for i, new_loss in enumerate(self.new_losses):
+            loss_list[i] += new_loss
+
+
+    def zero_losses(self):
+        """
+        Return a list of 9 zeros for the 9 losses being outputted
+        """
+        return [0] * 9
 
     

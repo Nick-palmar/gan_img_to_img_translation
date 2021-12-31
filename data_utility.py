@@ -119,6 +119,7 @@ def save_images(img_tensors: torch.Tensor, file_name: str, folder: str='output')
     # save the figure results
     os.makedirs(folder, exist_ok=True)
     plt.savefig(os.path.join(folder, file_name))
+    plt.close(fig)
 
 def show_batch(data: Data, n: int, folder: str='output') -> matplotlib.image.AxesImage:
     if n <= 0:

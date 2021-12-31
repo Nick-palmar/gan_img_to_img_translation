@@ -6,7 +6,7 @@ from losses import DGANLoss, PatchNCELoss
 from data_utility import set_requires_grad
 import os
 
-class CUT_gan(nn.Module):
+class CUTGan(nn.Module):
     def __init__(self, lambda_gan, lambda_nce, nce_layers, device, lr, nce_idt=True, encoder_net_features=256, nce_tau=0.07, num_patches=256, train=True, gan_l_type='non-saturating', bs=1):
         """
         Creates a CUT model which is a type of GAN for image to image translation
@@ -128,7 +128,7 @@ class CUT_gan(nn.Module):
             self.fake_src = fake[real_src.shape[0]:]
 
 
-    def optimize_params(self, real_src, real_targ, discriminator_train=1):
+    def optimize_params(self, real_src, real_targ, discriminator_train=1, gen_train=1):
         """
         Forward pass, loss, back propagate, and step for all 3 networks to optmize all the params
         """
@@ -144,13 +144,14 @@ class CUT_gan(nn.Module):
             self.disc_optim.step()
 
         # generator and encoder feature extractor param update
-        set_requires_grad(self.disc, False)
-        self.gen_optim.zero_grad()
-        self.feat_net_optim.zero_grad()
-        self.loss_g = self.calc_g_loss()
-        self.loss_g.backward()
-        self.gen_optim.step()
-        self.feat_net_optim.step()
+        for _ in range(gen_train):
+            set_requires_grad(self.disc, False)
+            self.gen_optim.zero_grad()
+            self.feat_net_optim.zero_grad()
+            self.loss_g = self.calc_g_loss()
+            self.loss_g.backward()
+            self.gen_optim.step()
+            self.feat_net_optim.step()
 
 
     def calc_d_loss(self):
@@ -208,3 +209,28 @@ class CUT_gan(nn.Module):
             total_loss += (nce_loss(targ_feat, src_feat) * self.lambda_nce).mean()
         
         return total_loss/len(self.gen.nce_layers)
+
+
+    def get_losses(self):
+        self.new_losses =  [
+            self.loss_d.item(), 
+            self.fake_d_loss.item(), 
+            self.real_d_loss.item(),
+            self.loss_g.item(), 
+            self.gan_g_loss.item(),
+            self.nce_loss.item(), 
+            self.nce_identity_loss.item(),
+        ]
+        return self.new_losses
+    
+    def update_losses(self, loss_list):
+        # update the loss list through pass by reference
+        for i, new_loss in enumerate(self.new_losses):
+            loss_list[i] += new_loss
+    
+    def zero_losses(self):
+        """
+        Return a list of length 7 with all zeros (for the 7 losses being outputted)
+        """
+        return [0] * 7
+    
