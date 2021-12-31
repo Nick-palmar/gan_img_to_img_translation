@@ -7,8 +7,9 @@ import itertools
 import os
 import torch
 
-class CycleGan:
+class CycleGan(nn.Module):
     def __init__(self, device, lr, train=True, gan_l_type='lsgan', pool_size=50, lambda_src=10, lambda_targ=10, lambda_identity=0.5):
+        super().__init__()
         self.device = device
         self.lr = lr
         self.is_train = train

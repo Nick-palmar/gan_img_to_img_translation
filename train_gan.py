@@ -6,7 +6,7 @@ import time
 from tqdm import tqdm
 
 # define the model to use
-model_type = 'CUT'
+model_type = 'cycle'
 
 # define the params to pass to the cut gan model
 lambda_gan = 1
@@ -16,12 +16,15 @@ enc_net_feats = 32
 num_patches = 128
 
 # define the params to pass to the cycle GAN model
+lambda_src = 10
+lambda_targ = 10
+lambda_identity = 0.5
 
 save_every = 100 # save generator image every x images in a batch
 # define training parameters common to both architectures
 gan_l_type='lsgan' # consider switching to lsgan as used in the paper
 epochs = 100
-lr = 2e-3 
+lr = 2e-4 
 bs = 1
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
 print(f'Device: {device}')
@@ -37,7 +40,7 @@ def main():
         model = CUTGan(lambda_gan, lambda_nce, nce_layers, device, lr, gan_l_type=gan_l_type, bs=bs, num_patches=num_patches, encoder_net_features=enc_net_feats)
         loss_names = ['DLoss', 'FakeDLoss', 'RealDLoss', 'GLoss', 'GANGLoss', 'NCELoss', 'NCEIdentityLoss']
     elif model_type == 'cycle':
-        model = CycleGan()
+        model = CycleGan(device, lr, gan_l_type=gan_l_type, lambda_src=lambda_src, lambda_targ=lambda_targ, lambda_identity=lambda_identity)
         loss_names = ['GLoss', 'GAN_x_to_y', 'GAN_y_to_x', 'FwdCycle', 'BwdCycle', 'IdtSrc', 'IdtTarg', 'DTarg', 'DSrc']
     else:
         raise ValueError(f'Model must be of type "CUT" or "cycle" not {model_type}')
