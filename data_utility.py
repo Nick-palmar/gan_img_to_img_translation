@@ -62,7 +62,7 @@ def create_dataloader(root: str, im_size: Tuple, bs: int) -> DataLoader:
     return dataloader
 
 
-class ImagePool():
+class ImagePool:
     """
     Image buffer class for cycle GAN
     """

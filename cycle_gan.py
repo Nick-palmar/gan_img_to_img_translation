@@ -46,7 +46,6 @@ class CycleGan(nn.Module):
         self.disc_targ.train()
 
 
-  
     def eval(self):
         self.gen_src_targ.eval()
         self.gen_targ_src.eval()

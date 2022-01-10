@@ -16,15 +16,15 @@ enc_net_feats = 32
 num_patches = 128
 
 # define the params to pass to the cycle GAN model
-lambda_src = 10
-lambda_targ = 10
+lambda_src = 5
+lambda_targ = 5
 lambda_identity = 0.5
 
 save_every = 100 # save generator image every x images in a batch
 # define training parameters common to both architectures
 gan_l_type='lsgan' # consider switching to lsgan as used in the paper
 epochs = 100
-lr = 2e-4 
+lr = 1e-5 
 bs = 1
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
 print(f'Device: {device}')
@@ -58,7 +58,7 @@ def main():
                 x = x.to(device)
                 y = y.to(device)
                 # train model
-                model.optimize_params(x, y, discriminator_train=1)
+                model.optimize_params(x, y, gen_train=3, discriminator_train=1)
                 # update losses
                 model.get_losses()
                 model.update_losses(loss_list)
